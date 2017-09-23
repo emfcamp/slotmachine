@@ -1,11 +1,13 @@
 # Slot Machine
 [![Build Status](https://travis-ci.org/emfcamp/slotmachine.svg?branch=master)](https://travis-ci.org/emfcamp/slotmachine)
+
 A conference schedule optimizer using mixed integer linear programming.
 This is used to generate the schedule for [Electromagnetic Field](https://www.emfcamp.org) events.
 
 ## Requirements
 
-You'll need the GLPK solver installed to use this library. `apt-get install glpk-utils` or `brew install glpk`.
+You'll need the [GLPK](https://www.gnu.org/software/glpk/) solver installed to use this library.
+`apt-get install glpk-utils` or `brew install glpk`.
 
 ## Acknowledgements
 
