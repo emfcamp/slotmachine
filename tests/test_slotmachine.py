@@ -43,7 +43,7 @@ class ScheduleTalksTestCase(unittest.TestCase):
         # All talks must be represented
         self.assertEqual(sorted(talks), sorted(talk_ids))
         # All slots/venue tuples must be different
-        slot_venues = zip(slots, venues)
+        slot_venues = list(zip(slots, venues))
         self.assertEqual(sorted(set(slot_venues)), sorted(slot_venues))
         # Check slots are valid
         self.assertTrue(all(s in avail_slots for s in slots))
