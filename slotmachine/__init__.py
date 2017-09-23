@@ -10,12 +10,10 @@ class Unsatisfiable(Exception):
 
 
 class SlotMachine(object):
-
     Talk = namedtuple('Talk', ('id', 'duration', 'venues', 'speakers'))
     talk_permissions = {}
 
     def schedule_talks(self, talks, slots_available, old_talks=[]):
-
         def allowed(slot, talk, venue):
             if (slot in self.talk_permissions[talk]['slots'] and
                     venue in self.talk_permissions[talk]['venues']):
@@ -131,7 +129,6 @@ class SlotMachine(object):
                         ) <= 1
                     )
 
-        print("Beginning solve...")
         problem.solve(pulp.GLPK())
 
         if pulp.LpStatus[problem.status] != 'Optimal':
@@ -212,7 +209,6 @@ class SlotMachine(object):
             if 'time' in event and 'venue' in event:
                 old_slots.append((self.calc_slot(event_start, event['time']), event['id'], event['venue']))
 
-        print("BEGINNING SCHEDULING %s EVENTS" % len(talks))
         solved = self.schedule_talks(talks, slots_available, old_talks=old_slots)
 
         for slot_id, talk_id, venue_id in solved:
@@ -221,5 +217,3 @@ class SlotMachine(object):
 
         with open(outfile, 'w') as f:
             json.dump(talk_data.values(), f, sort_keys=True, indent=4, separators=(',', ': '))
-
-        print("New schedule written")
