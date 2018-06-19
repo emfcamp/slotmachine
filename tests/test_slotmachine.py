@@ -20,13 +20,6 @@ class UtilTestCase(unittest.TestCase):
 
 
 class ScheduleTalksTestCase(unittest.TestCase):
-    def setUp(self):
-        # Due to @cached, we need to recreate SlotMachine each time
-        pass
-
-    def tearDown(self):
-        pass
-
     def schedule_and_basic_asserts(self, talk_defs, talk_permissions, avail_slots, old_talks=None):
         if old_talks is None:
             old_talks = []
@@ -36,8 +29,9 @@ class ScheduleTalksTestCase(unittest.TestCase):
 
         sm = SlotMachine()
         sm.talk_permissions = talk_permissions
+        sm.slots_available = avail_slots
 
-        solved = sm.schedule_talks(talk_defs, avail_slots, old_talks=old_talks)
+        solved = sm.schedule_talks(talk_defs, old_talks=old_talks)
         slots, talks, venues = unzip(solved)
 
         # All talks must be represented
@@ -70,9 +64,10 @@ class ScheduleTalksTestCase(unittest.TestCase):
 
         sm = SlotMachine()
         sm.talk_permissions = talk_permissions
+        sm.slots_available = avail_slots
 
         with self.assertRaises(Unsatisfiable):
-            solved = sm.schedule_talks(talk_defs, avail_slots, old_talks=old_talks)
+            solved = sm.schedule_talks(talk_defs, old_talks=old_talks)
             print(solved)
 
     def test_simple(self):
