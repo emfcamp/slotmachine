@@ -2,7 +2,7 @@ from setuptools import setup
 
 
 setup(name='slotmachine',
-      version='0.0.1',
+      version='0.0.2',
       description='Conference talk scheduler',
       author='EMF',
       author_email='russ@emfcamp.org',
