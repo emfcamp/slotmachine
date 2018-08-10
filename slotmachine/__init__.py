@@ -22,11 +22,12 @@ def cached(function):
         result = function(*args)
         cache[args] = result
         return result
+
     return accept
 
 
 class SlotMachine(object):
-    Talk = namedtuple('Talk', ('id', 'duration', 'venues', 'speakers'))
+    Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers"))
 
     def __init__(self):
         self.talks_by_id = {}
@@ -50,9 +51,11 @@ class SlotMachine(object):
 
         # There isn't enough time left for the talk if it starts in this slot.
         if not contiguous:
-            self.names_to_basics[name] = pulp.LpVariable(name, lowBound=0, upBound=0, cat='Integer')
+            self.names_to_basics[name] = pulp.LpVariable(
+                name, lowBound=0, upBound=0, cat="Integer"
+            )
         else:
-            self.names_to_basics[name] = pulp.LpVariable(name, cat='Binary')
+            self.names_to_basics[name] = pulp.LpVariable(name, cat="Binary")
 
         return self.names_to_basics[name]
 
@@ -62,11 +65,13 @@ class SlotMachine(object):
         this slot and venue"""
         name = "A_%d_%d_%d" % (slot, talk_id, venue)
 
-        if (slot in self.talk_permissions[talk_id]['slots'] and
-                venue in self.talk_permissions[talk_id]['venues']):
-            variable = pulp.LpVariable(name, cat='Binary')
+        if (
+            slot in self.talk_permissions[talk_id]["slots"]
+            and venue in self.talk_permissions[talk_id]["venues"]
+        ):
+            variable = pulp.LpVariable(name, cat="Binary")
         else:
-            variable = pulp.LpVariable(name, lowBound=0, upBound=0, cat='Integer')
+            variable = pulp.LpVariable(name, lowBound=0, upBound=0, cat="Integer")
 
         duration = self.talks_by_id[talk_id].duration
         definition = sum(
@@ -78,15 +83,7 @@ class SlotMachine(object):
         return variable
 
     def schedule_talks(self, talks, old_talks=[]):
-        def allowed(slot, talk, venue):
-            if (slot in self.talk_permissions[talk]['slots'] and
-                    venue in self.talk_permissions[talk]['venues']):
-                return True
-            return False
-
-        venues = {
-            v for talk in talks for v in talk.venues
-        }
+        venues = {v for talk in talks for v in talk.venues}
 
         self.talks_by_id = {talk.id: talk for talk in talks}
 
@@ -97,36 +94,44 @@ class SlotMachine(object):
                     self.basic(slot, talk.id, venue)
                     for venue in venues
                     for slot in self.slots_available
-                ) == 1
+                )
+                == 1
             )
 
         # At most one talk may be active in a given venue and slot.
         for v in venues:
             for slot in self.slots_available:
                 self.problem.addConstraint(
-                    pulp.lpSum(
-                        self.active(slot, talk.id, v)
-                        for talk in talks
-                    ) <= 1
+                    pulp.lpSum(self.active(slot, talk.id, v) for talk in talks) <= 1
                 )
 
         # We'd like talks with a slot & venue to try and stay there if they can
-        self.problem += (10 * pulp.lpSum(
-            self.active(s, talk_id, venue)
-            for (slot, talk_id, venue) in old_talks
-            for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-            # And we'd prefer to just move stage rather than slot
-        )) + (5 * pulp.lpSum(
-            self.active(s, talk_id, v)
-            for (slot, talk_id, _) in old_talks
-            for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-            for v in self.talk_permissions[talk_id]['venues']
-            # But if they have to move slot, 60mins either way is ok
-        )) + pulp.lpSum(
-            self.active(s, talk_id, v)
-            for (slot, talk_id, _) in old_talks
-            for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
-            for v in self.talk_permissions[talk_id]['venues']
+        self.problem += (
+            (
+                10
+                * pulp.lpSum(
+                    self.active(s, talk_id, venue)
+                    for (slot, talk_id, venue) in old_talks
+                    for s in range(slot, slot + self.talks_by_id[talk_id].duration)
+                    # And we'd prefer to just move stage rather than slot
+                )
+            )
+            + (
+                5
+                * pulp.lpSum(
+                    self.active(s, talk_id, v)
+                    for (slot, talk_id, _) in old_talks
+                    for s in range(slot, slot + self.talks_by_id[talk_id].duration)
+                    for v in self.talk_permissions[talk_id]["venues"]
+                    # But if they have to move slot, 60mins either way is ok
+                )
+            )
+            + pulp.lpSum(
+                self.active(s, talk_id, v)
+                for (slot, talk_id, _) in old_talks
+                for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
+                for v in self.talk_permissions[talk_id]["venues"]
+            )
         )
 
         talks_by_speaker = {}
@@ -144,12 +149,13 @@ class SlotMachine(object):
                             self.active(slot, talk_id, venue)
                             for talk_id in conflicts
                             for venue in venues
-                        ) <= 1
+                        )
+                        <= 1
                     )
 
         self.problem.solve(pulp.GLPK())
 
-        if pulp.LpStatus[self.problem.status] != 'Optimal':
+        if pulp.LpStatus[self.problem.status] != "Optimal":
             raise Unsatisfiable()
 
         return [
@@ -162,66 +168,82 @@ class SlotMachine(object):
 
     @classmethod
     def num_slots(self, start_time, end_time):
-        return int((parser.parse(end_time) - parser.parse(start_time)).total_seconds() / 60 / 10)
+        return int((end_time - start_time).total_seconds() / 60 / 10)
 
     @classmethod
     def calculate_slots(self, event_start, range_start, range_end):
-        slot_start = int((parser.parse(range_start) - parser.parse(event_start)).total_seconds() / 60 / 10)
+        slot_start = int((range_start - event_start).total_seconds() / 60 / 10)
         # We add one to allow the talk to finish in the last slot of this period,
         # as we force a single-slot changeover
-        return range(slot_start, slot_start + SlotMachine.num_slots(range_start, range_end) + 1)
+        return range(
+            slot_start, slot_start + SlotMachine.num_slots(range_start, range_end) + 1
+        )
 
     def calc_time(self, event_start, slots):
-        return (parser.parse(event_start) + relativedelta.relativedelta(minutes=slots * 10))
+        return event_start + relativedelta.relativedelta(minutes=slots * 10)
 
     def calc_slot(self, event_start, time):
-        return int((parser.parse(time) - parser.parse(event_start)).total_seconds() / 60 / 10)
+        return int((time - event_start).total_seconds() / 60 / 10)
 
-    def schedule(self, event_start, schedule):
+    def schedule(self, schedule):
         talks = []
         talk_data = {}
         old_slots = []
 
+        event_start = min(
+            parser.parse(r["start"]) for event in schedule for r in event["time_ranges"]
+        )
+
         for event in schedule:
-            talk_data[event['id']] = event
+            talk_data[event["id"]] = event
             slots = []
 
-            for trange in event['time_ranges']:
-                event_slots = SlotMachine.calculate_slots(event_start, trange['start'], trange['end'])
+            for trange in event["time_ranges"]:
+                event_slots = SlotMachine.calculate_slots(
+                    event_start,
+                    parser.parse(trange["start"]),
+                    parser.parse(trange["end"]),
+                )
                 slots.extend(event_slots)
 
             self.slots_available = self.slots_available.union(set(slots))
 
-            self.talk_permissions[event['id']] = {
-                'slots': slots,
-                'venues': event['valid_venues']
+            self.talk_permissions[event["id"]] = {
+                "slots": slots,
+                "venues": event["valid_venues"],
             }
 
             talks.append(
                 self.Talk(
-                    id=event['id'],
-                    venues=event['valid_venues'],
-                    speakers=event['speakers'],
+                    id=event["id"],
+                    venues=event["valid_venues"],
+                    speakers=event["speakers"],
                     # We add one slot to allow for a single-slot changeover period
-                    duration=int(event['duration'] / 10) + 1
+                    duration=int(event["duration"] / 10) + 1,
                 )
             )
 
-            if 'time' in event and 'venue' in event:
-                old_slots.append((self.calc_slot(event_start, event['time']), event['id'], event['venue']))
+            if "time" in event and "venue" in event:
+                old_slots.append(
+                    (
+                        self.calc_slot(event_start, parser.parse(event["time"])),
+                        event["id"],
+                        event["venue"],
+                    )
+                )
 
         solved = self.schedule_talks(talks, old_talks=old_slots)
 
         for slot_id, talk_id, venue_id in solved:
-            talk_data[talk_id]['time'] = str(self.calc_time(event_start, slot_id))
-            talk_data[talk_id]['venue'] = venue_id
+            talk_data[talk_id]["time"] = str(self.calc_time(event_start, slot_id))
+            talk_data[talk_id]["venue"] = venue_id
 
-        return talk_data.values()
+        return list(talk_data.values())
 
-    def schedule_from_file(self, event_start, infile, outfile):
+    def schedule_from_file(self, infile, outfile):
         schedule = json.load(open(infile))
 
-        result = self.schedule(event_start, schedule)
+        result = self.schedule(schedule)
 
-        with open(outfile, 'w') as f:
-            json.dump(result, f, sort_keys=True, indent=4, separators=(',', ': '))
+        with open(outfile, "w") as f:
+            json.dump(result, f, sort_keys=True, indent=4, separators=(",", ": "))
