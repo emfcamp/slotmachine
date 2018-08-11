@@ -7,7 +7,7 @@ python:
 addons:
   apt:
     packages:
-      - glpk-utils
+      - coinor-cbc
 install:
   - pip install -r requirements.txt
   - python setup.py -q install

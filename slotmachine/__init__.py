@@ -153,7 +153,10 @@ class SlotMachine(object):
                         <= 1
                     )
 
-        self.problem.solve(pulp.GLPK())
+        # We use CBC's simplex solver rather than dual, as it is faster and the
+        # accuracy difference is negligable for this problem
+        # We use COIN_CMD() over COIN() as it allows us to run in parallel mode
+        self.problem.solve(pulp.COIN_CMD(dual=0, threads=2))
 
         if pulp.LpStatus[self.problem.status] != "Optimal":
             raise Unsatisfiable()

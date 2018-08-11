@@ -6,8 +6,8 @@ This is used to generate the schedule for [Electromagnetic Field](https://www.em
 
 ## Requirements
 
-You'll need the [GLPK](https://www.gnu.org/software/glpk/) solver installed to use this library.
-`apt-get install glpk-utils` or `brew install glpk`.
+You'll need the [COIN-OR](https://www.coin-or.org/) [CBC](https://projects.coin-or.org/Cbc) solver installed to use this library.
+`apt-get install coinor-cbc` or `brew tap coin-or-tools/coinor && brew install cbc`.
 
 ## Acknowledgements
 
