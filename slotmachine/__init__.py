@@ -1,7 +1,8 @@
 from collections import namedtuple
-from functools import wraps
 from dateutil import parser, relativedelta
 import json
+import time
+import logging
 import pulp
 
 
@@ -9,38 +10,22 @@ class Unsatisfiable(Exception):
     pass
 
 
-def cached(function):
-    cache = {}
-
-    @wraps(function)
-    def accept(*args):
-        args = tuple(args)
-        try:
-            return cache[args]
-        except KeyError:
-            pass
-        result = function(*args)
-        cache[args] = result
-        return result
-
-    return accept
-
-
 class SlotMachine(object):
     Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers"))
 
     def __init__(self):
+        self.log = logging.getLogger(__name__)
         self.talks_by_id = {}
         self.talk_permissions = {}
-        self.names_to_basics = {}
         self.slots_available = set()
-        self.problem = pulp.LpProblem("Scheduler", pulp.LpMaximize)
+        self.var_cache = {}
 
-    @cached
-    def basic(self, slot, talk_id, venue):
+    def start_var(self, slot, talk_id, venue):
         """A 0/1 variable that is 1 if talk with ID talk_id begins in this
         slot and venue"""
         name = "B_%d_%d_%d" % (slot, talk_id, venue)
+        if name in self.var_cache:
+            return self.var_cache[name]
 
         # Check if this talk doesn't span a period of no talks
         contiguous = True
@@ -51,19 +36,19 @@ class SlotMachine(object):
 
         # There isn't enough time left for the talk if it starts in this slot.
         if not contiguous:
-            self.names_to_basics[name] = pulp.LpVariable(
-                name, lowBound=0, upBound=0, cat="Integer"
-            )
+            var = pulp.LpVariable(name, lowBound=0, upBound=0, cat="Integer")
         else:
-            self.names_to_basics[name] = pulp.LpVariable(name, cat="Binary")
+            var = pulp.LpVariable(name, cat="Binary")
 
-        return self.names_to_basics[name]
+        self.var_cache[name] = var
+        return var
 
-    @cached
     def active(self, slot, talk_id, venue):
         """A 0/1 variable that is 1 if talk with ID talk_id is active during
         this slot and venue"""
         name = "A_%d_%d_%d" % (slot, talk_id, venue)
+        if name in self.var_cache:
+            return self.var_cache[name]
 
         if (
             slot in self.talk_permissions[talk_id]["slots"]
@@ -75,15 +60,18 @@ class SlotMachine(object):
 
         duration = self.talks_by_id[talk_id].duration
         definition = pulp.lpSum(
-            self.basic(s, talk_id, venue)
+            self.start_var(s, talk_id, venue)
             for s in range(slot, max(-1, slot - duration), -1)
         )
 
         self.problem.addConstraint(variable == definition)
+        self.var_cache[name] = variable
         return variable
 
-    def schedule_talks(self, talks, old_talks=[]):
-        venues = {v for talk in talks for v in talk.venues}
+    def get_problem(self, venues, talks, old_talks):
+        # Reset problem and cached variables
+        self.problem = pulp.LpProblem("Scheduler", pulp.LpMaximize)
+        self.var_cache = {}
 
         self.talks_by_id = {talk.id: talk for talk in talks}
 
@@ -91,7 +79,7 @@ class SlotMachine(object):
         for talk in talks:
             self.problem.addConstraint(
                 pulp.lpSum(
-                    self.basic(slot, talk.id, venue)
+                    self.start_var(slot, talk.id, venue)
                     for venue in venues
                     for slot in self.slots_available
                 )
@@ -152,21 +140,43 @@ class SlotMachine(object):
                         )
                         <= 1
                     )
+        return self.problem
 
+    def schedule_talks(self, talks, old_talks=[]):
+        start = time.time()
+
+        self.log.info("Generating schedule problem...")
+
+        venues = {v for talk in talks for v in talk.venues}
+        problem = self.get_problem(venues, talks, old_talks)
+
+        self.log.info(
+            "Problem generated (%s variables) in %.2f seconds, attempting to solve...",
+            len(self.var_cache),
+            time.time() - start,
+        )
+
+        solve_start = time.time()
         # We use CBC's simplex solver rather than dual, as it is faster and the
         # accuracy difference is negligable for this problem
         # We use COIN_CMD() over COIN() as it allows us to run in parallel mode
-        self.problem.solve(pulp.COIN_CMD(dual=0, threads=2))
+        problem.solve(pulp.COIN_CMD(dual=0, threads=4))
 
         if pulp.LpStatus[self.problem.status] != "Optimal":
             raise Unsatisfiable()
+
+        self.log.info(
+            "Problem solved in %.2f seconds. Total runtime %.2f seconds.",
+            time.time() - solve_start,
+            time.time() - start,
+        )
 
         return [
             (slot, talk.id, venue)
             for slot in self.slots_available
             for talk in talks
             for venue in venues
-            if pulp.value(self.basic(slot, talk.id, venue))
+            if pulp.value(self.start_var(slot, talk.id, venue))
         ]
 
     @classmethod
