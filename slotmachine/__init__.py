@@ -74,7 +74,7 @@ class SlotMachine(object):
             variable = pulp.LpVariable(name, lowBound=0, upBound=0, cat="Integer")
 
         duration = self.talks_by_id[talk_id].duration
-        definition = sum(
+        definition = pulp.lpSum(
             self.basic(s, talk_id, venue)
             for s in range(slot, max(-1, slot - duration), -1)
         )
