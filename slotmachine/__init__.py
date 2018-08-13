@@ -93,28 +93,28 @@ class SlotMachine(object):
                     pulp.lpSum(self.active(slot, talk.id, v) for talk in talks) <= 1
                 )
 
-        # We'd like talks with a slot & venue to try and stay there if they can
         self.problem += (
             (
                 10
                 * pulp.lpSum(
+                    # We'd like talks with a slot & venue to try and stay there if they can
                     self.active(s, talk_id, venue)
                     for (slot, talk_id, venue) in old_talks
                     for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-                    # And we'd prefer to just move stage rather than slot
                 )
             )
             + (
                 5
                 * pulp.lpSum(
+                    # And we'd prefer to just move stage rather than slot
                     self.active(s, talk_id, v)
                     for (slot, talk_id, _) in old_talks
                     for s in range(slot, slot + self.talks_by_id[talk_id].duration)
                     for v in self.talk_permissions[talk_id]["venues"]
-                    # But if they have to move slot, 60mins either way is ok
                 )
             )
             + pulp.lpSum(
+                # But if they have to move slot, 60mins either way is ok
                 self.active(s, talk_id, v)
                 for (slot, talk_id, _) in old_talks
                 for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
@@ -184,12 +184,12 @@ class SlotMachine(object):
         return int((end_time - start_time).total_seconds() / 60 / 10)
 
     @classmethod
-    def calculate_slots(self, event_start, range_start, range_end):
+    def calculate_slots(self, event_start, range_start, range_end, spacing_slots=1):
         slot_start = int((range_start - event_start).total_seconds() / 60 / 10)
-        # We add one to allow the talk to finish in the last slot of this period,
-        # as we force a single-slot changeover
+        # We add the number of slots that must be between events to the end to
+        # allow events to finish in the last period of the schedule
         return range(
-            slot_start, slot_start + SlotMachine.num_slots(range_start, range_end) + 1
+            slot_start, slot_start + SlotMachine.num_slots(range_start, range_end) + spacing_slots
         )
 
     def calc_time(self, event_start, slots):
@@ -198,7 +198,7 @@ class SlotMachine(object):
     def calc_slot(self, event_start, time):
         return int((time - event_start).total_seconds() / 60 / 10)
 
-    def schedule(self, schedule):
+    def schedule(self, schedule, spacing_slots=1):
         talks = []
         talk_data = {}
         old_slots = []
@@ -209,6 +209,7 @@ class SlotMachine(object):
 
         for event in schedule:
             talk_data[event["id"]] = event
+            spacing_slots = event.get("spacing_slots", spacing_slots)
             slots = []
 
             for trange in event["time_ranges"]:
@@ -216,6 +217,7 @@ class SlotMachine(object):
                     event_start,
                     parser.parse(trange["start"]),
                     parser.parse(trange["end"]),
+                    spacing_slots,
                 )
                 slots.extend(event_slots)
 
@@ -231,8 +233,9 @@ class SlotMachine(object):
                     id=event["id"],
                     venues=event["valid_venues"],
                     speakers=event["speakers"],
-                    # We add one slot to allow for a single-slot changeover period
-                    duration=int(event["duration"] / 10) + 1,
+                    # We add the number of spacing slots that must be between
+                    # events to the duration
+                    duration=int(event["duration"] / 10) + spacing_slots,
                 )
             )
 
