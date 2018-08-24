@@ -11,7 +11,7 @@ class Unsatisfiable(Exception):
 
 
 class SlotMachine(object):
-    Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers"))
+    Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers", "preferred_venues"))
 
     def __init__(self):
         self.log = logging.getLogger(__name__)
@@ -93,33 +93,29 @@ class SlotMachine(object):
                     pulp.lpSum(self.active(slot, talk.id, v) for talk in talks) <= 1
                 )
 
-        self.problem += (
-            (
-                10
-                * pulp.lpSum(
-                    # We'd like talks with a slot & venue to try and stay there if they can
-                    self.active(s, talk_id, venue)
-                    for (slot, talk_id, venue) in old_talks
-                    for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-                )
-            )
-            + (
-                5
-                * pulp.lpSum(
-                    # And we'd prefer to just move stage rather than slot
-                    self.active(s, talk_id, v)
-                    for (slot, talk_id, _) in old_talks
-                    for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-                    for v in self.talk_permissions[talk_id]["venues"]
-                )
-            )
-            + pulp.lpSum(
-                # But if they have to move slot, 60mins either way is ok
-                self.active(s, talk_id, v)
-                for (slot, talk_id, _) in old_talks
-                for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
-                for v in self.talk_permissions[talk_id]["venues"]
-            )
+        self.problem += 5 * pulp.lpSum(
+            # Maximise the number of things in their preferred venues (for putting big talks on big stages)
+            self.active(slot, talk.id, venue)
+            for talk in talks
+            for venue in talk.preferred_venues
+            for slot in self.slots_available
+        ) + 10 * pulp.lpSum(
+            # We'd like talks with a slot & venue to try and stay there if they can
+            self.active(s, talk_id, venue)
+            for (slot, talk_id, venue) in old_talks
+            for s in range(slot, slot + self.talks_by_id[talk_id].duration)
+        ) + 5 * pulp.lpSum(
+            # And we'd prefer to just move stage rather than slot
+            self.active(s, talk_id, v)
+            for (slot, talk_id, _) in old_talks
+            for s in range(slot, slot + self.talks_by_id[talk_id].duration)
+            for v in self.talk_permissions[talk_id]["venues"]
+        ) + 1 * pulp.lpSum(
+            # But if they have to move slot, 60mins either way is ok
+            self.active(s, talk_id, v)
+            for (slot, talk_id, _) in old_talks
+            for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
+            for v in self.talk_permissions[talk_id]["venues"]
         )
 
         talks_by_speaker = {}
@@ -236,6 +232,7 @@ class SlotMachine(object):
                     # We add the number of spacing slots that must be between
                     # events to the duration
                     duration=int(event["duration"] / 10) + spacing_slots,
+                    preferred_venues=event.get("preferred_venues", []),
                 )
             )
 
