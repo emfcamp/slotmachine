@@ -11,7 +11,7 @@ class Unsatisfiable(Exception):
 
 
 class SlotMachine(object):
-    Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers", "preferred_venues"))
+    Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers", "preferred_venues", "preferred_slots"))
 
     def __init__(self):
         self.log = logging.getLogger(__name__)
@@ -99,6 +99,12 @@ class SlotMachine(object):
             for talk in talks
             for venue in talk.preferred_venues
             for slot in self.slots_available
+        ) + 5 * pulp.lpSum(
+            # Try and keep everything inside its preferred time period (for packing things earlier in the day)
+            self.active(slot, talk.id, venue)
+            for talk in talks
+            for slot in talk.preferred_slots
+            for venue in venues
         ) + 10 * pulp.lpSum(
             # We'd like talks with a slot & venue to try and stay there if they can
             self.active(s, talk_id, venue)
@@ -207,6 +213,7 @@ class SlotMachine(object):
             talk_data[event["id"]] = event
             spacing_slots = event.get("spacing_slots", spacing_slots)
             slots = []
+            preferred_slots = []
 
             for trange in event["time_ranges"]:
                 event_slots = SlotMachine.calculate_slots(
@@ -216,6 +223,15 @@ class SlotMachine(object):
                     spacing_slots,
                 )
                 slots.extend(event_slots)
+
+            for trange in event.get("preferred_time_ranges", []):
+                event_slots = SlotMachine.calculate_slots(
+                    event_start,
+                    parser.parse(trange["start"]),
+                    parser.parse(trange["end"]),
+                    spacing_slots,
+                )
+                preferred_slots.extend(event_slots)
 
             self.slots_available = self.slots_available.union(set(slots))
 
@@ -233,6 +249,7 @@ class SlotMachine(object):
                     # events to the duration
                     duration=int(event["duration"] / 10) + spacing_slots,
                     preferred_venues=event.get("preferred_venues", []),
+                    preferred_slots=preferred_slots,
                 )
             )
 
