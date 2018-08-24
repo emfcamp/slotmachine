@@ -99,7 +99,7 @@ class SlotMachine(object):
             for talk in talks
             for venue in talk.preferred_venues
             for slot in self.slots_available
-        ) + 5 * pulp.lpSum(
+        ) + 10 * pulp.lpSum(
             # Try and keep everything inside its preferred time period (for packing things earlier in the day)
             self.active(slot, talk.id, venue)
             for talk in talks
