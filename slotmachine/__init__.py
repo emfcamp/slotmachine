@@ -12,6 +12,8 @@ class Unsatisfiable(Exception):
 
 class SlotMachine(object):
     Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers", "preferred_venues", "preferred_slots"))
+    # If preferred venues and/or slots are not specified, assume there are no preferences
+    Talk.__new__.__defaults__ = ([], [])
 
     def __init__(self):
         self.log = logging.getLogger(__name__)
