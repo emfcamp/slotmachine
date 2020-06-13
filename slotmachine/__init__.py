@@ -11,7 +11,10 @@ class Unsatisfiable(Exception):
 
 
 class SlotMachine(object):
-    Talk = namedtuple("Talk", ("id", "duration", "venues", "speakers", "preferred_venues", "preferred_slots"))
+    Talk = namedtuple(
+        "Talk",
+        ("id", "duration", "venues", "speakers", "preferred_venues", "preferred_slots"),
+    )
     # If preferred venues and/or slots are not specified, assume there are no preferences
     Talk.__new__.__defaults__ = ([], [])
 
@@ -95,35 +98,46 @@ class SlotMachine(object):
                     pulp.lpSum(self.active(slot, talk.id, v) for talk in talks) <= 1
                 )
 
-        self.problem += 5 * pulp.lpSum(
-            # Maximise the number of things in their preferred venues (for putting big talks on big stages)
-            self.active(slot, talk.id, venue)
-            for talk in talks
-            for venue in talk.preferred_venues
-            for slot in self.slots_available
-        ) + 10 * pulp.lpSum(
-            # Try and keep everything inside its preferred time period (for packing things earlier in the day)
-            self.active(slot, talk.id, venue)
-            for talk in talks
-            for slot in talk.preferred_slots
-            for venue in venues
-        ) + 10 * pulp.lpSum(
-            # We'd like talks with a slot & venue to try and stay there if they can
-            self.active(s, talk_id, venue)
-            for (slot, talk_id, venue) in old_talks
-            for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-        ) + 5 * pulp.lpSum(
-            # And we'd prefer to just move stage rather than slot
-            self.active(s, talk_id, v)
-            for (slot, talk_id, _) in old_talks
-            for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-            for v in self.talk_permissions[talk_id]["venues"]
-        ) + 1 * pulp.lpSum(
-            # But if they have to move slot, 60mins either way is ok
-            self.active(s, talk_id, v)
-            for (slot, talk_id, _) in old_talks
-            for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
-            for v in self.talk_permissions[talk_id]["venues"]
+        self.problem += (
+            5
+            * pulp.lpSum(
+                # Maximise the number of things in their preferred venues (for putting big talks on big stages)
+                self.active(slot, talk.id, venue)
+                for talk in talks
+                for venue in talk.preferred_venues
+                for slot in self.slots_available
+            )
+            + 10
+            * pulp.lpSum(
+                # Try and keep everything inside its preferred time period (for packing things earlier in the day)
+                self.active(slot, talk.id, venue)
+                for talk in talks
+                for slot in talk.preferred_slots
+                for venue in venues
+            )
+            + 10
+            * pulp.lpSum(
+                # We'd like talks with a slot & venue to try and stay there if they can
+                self.active(s, talk_id, venue)
+                for (slot, talk_id, venue) in old_talks
+                for s in range(slot, slot + self.talks_by_id[talk_id].duration)
+            )
+            + 5
+            * pulp.lpSum(
+                # And we'd prefer to just move stage rather than slot
+                self.active(s, talk_id, v)
+                for (slot, talk_id, _) in old_talks
+                for s in range(slot, slot + self.talks_by_id[talk_id].duration)
+                for v in self.talk_permissions[talk_id]["venues"]
+            )
+            + 1
+            * pulp.lpSum(
+                # But if they have to move slot, 60mins either way is ok
+                self.active(s, talk_id, v)
+                for (slot, talk_id, _) in old_talks
+                for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
+                for v in self.talk_permissions[talk_id]["venues"]
+            )
         )
 
         talks_by_speaker = {}
@@ -193,7 +207,8 @@ class SlotMachine(object):
         # We add the number of slots that must be between events to the end to
         # allow events to finish in the last period of the schedule
         return range(
-            slot_start, slot_start + SlotMachine.num_slots(range_start, range_end) + spacing_slots
+            slot_start,
+            slot_start + SlotMachine.num_slots(range_start, range_end) + spacing_slots,
         )
 
     def calc_time(self, event_start, slots):
