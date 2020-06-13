@@ -1,5 +1,5 @@
 # Slot Machine
-[![Build Status](https://travis-ci.org/emfcamp/slotmachine.svg?branch=master)](https://travis-ci.org/emfcamp/slotmachine)
+![Tests](https://github.com/emfcamp/slotmachine/workflows/Tests/badge.svg?event=push)
 
 A conference schedule optimizer using mixed integer linear programming.
 This is used to generate the schedule for [Electromagnetic Field](https://www.emfcamp.org) events.
