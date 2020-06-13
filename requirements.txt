@@ -1,4 +1,0 @@
-pytest
-flake8
-python-dateutil
-pulp
