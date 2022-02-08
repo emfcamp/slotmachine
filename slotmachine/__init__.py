@@ -1,5 +1,8 @@
+from __future__ import annotations
 from collections import namedtuple
+from datetime import datetime
 from dateutil import parser, relativedelta
+from typing import Iterable
 import json
 import time
 import logging
@@ -23,9 +26,9 @@ class SlotMachine(object):
         self.talks_by_id = {}
         self.talk_permissions = {}
         self.slots_available = set()
-        self.var_cache = {}
+        self.var_cache: dict[str, pulp.LpVariable] = {}
 
-    def start_var(self, slot, talk_id, venue):
+    def start_var(self, slot, talk_id, venue) -> pulp.LpVariable:
         """A 0/1 variable that is 1 if talk with ID talk_id begins in this
         slot and venue"""
         name = "B_%d_%d_%d" % (slot, talk_id, venue)
@@ -48,7 +51,7 @@ class SlotMachine(object):
         self.var_cache[name] = var
         return var
 
-    def active(self, slot, talk_id, venue):
+    def active(self, slot, talk_id, venue) -> pulp.LpVariable:
         """A 0/1 variable that is 1 if talk with ID talk_id is active during
         this slot and venue"""
         name = "A_%d_%d_%d" % (slot, talk_id, venue)
@@ -73,7 +76,7 @@ class SlotMachine(object):
         self.var_cache[name] = variable
         return variable
 
-    def get_problem(self, venues, talks, old_talks):
+    def get_problem(self, venues, talks: Iterable[Talk], old_talks) -> pulp.LpProblem:
         # Reset problem and cached variables
         self.problem = pulp.LpProblem("Scheduler", pulp.LpMaximize)
         self.var_cache = {}
@@ -140,7 +143,7 @@ class SlotMachine(object):
             )
         )
 
-        talks_by_speaker = {}
+        talks_by_speaker: dict[str, list[int]] = {}
         for talk in talks:
             for speaker in talk.speakers:
                 talks_by_speaker.setdefault(speaker, []).append(talk.id)
@@ -160,7 +163,7 @@ class SlotMachine(object):
                     )
         return self.problem
 
-    def schedule_talks(self, talks, old_talks=[]):
+    def schedule_talks(self, talks: Iterable[Talk], old_talks=[]):
         start = time.time()
 
         self.log.info("Generating schedule problem...")
@@ -211,13 +214,13 @@ class SlotMachine(object):
             slot_start + SlotMachine.num_slots(range_start, range_end) + spacing_slots,
         )
 
-    def calc_time(self, event_start, slots):
+    def calc_time(self, event_start: datetime, slots: int):
         return event_start + relativedelta.relativedelta(minutes=slots * 10)
 
-    def calc_slot(self, event_start, time):
+    def calc_slot(self, event_start: datetime, time: datetime):
         return int((time - event_start).total_seconds() / 60 / 10)
 
-    def schedule(self, schedule, spacing_slots=1):
+    def schedule(self, schedule: dict, spacing_slots: int = 1) -> list[dict]:
         talks = []
         talk_data = {}
         old_slots = []
