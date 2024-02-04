@@ -1,8 +1,8 @@
 from __future__ import annotations
-from collections import namedtuple
 from datetime import datetime
 from dateutil import parser, relativedelta
-from typing import Iterable
+from dataclasses import dataclass, field
+from typing import NewType, cast
 import json
 import time
 import logging
@@ -13,22 +13,33 @@ class Unsatisfiable(Exception):
     pass
 
 
+TalkID = NewType("TalkID", int)
+VenueID = NewType("VenueID", int)
+Slot = NewType("Slot", int)
+SlotCount = NewType("SlotCount", int)
+OldTalk = tuple[Slot, TalkID, VenueID]
+
+
+@dataclass(frozen=True)
+class Talk:
+    id: TalkID
+    duration: SlotCount
+    venues: set[VenueID]
+    speakers: list[str]
+    preferred_venues: set[VenueID] = field(default_factory=set)
+    allowed_slots: set[Slot] = field(default_factory=set)
+    preferred_slots: set[Slot] = field(default_factory=set)
+
+
 class SlotMachine(object):
-    Talk = namedtuple(
-        "Talk",
-        ("id", "duration", "venues", "speakers", "preferred_venues", "preferred_slots"),
-    )
-    # If preferred venues and/or slots are not specified, assume there are no preferences
-    Talk.__new__.__defaults__ = ([], [])
 
     def __init__(self):
         self.log = logging.getLogger(__name__)
-        self.talks_by_id = {}
-        self.talk_permissions = {}
-        self.slots_available = set()
+        self.talks_by_id: dict[TalkID, Talk] = {}
+        self.slots_available: set[Slot] = set()
         self.var_cache: dict[str, pulp.LpVariable] = {}
 
-    def start_var(self, slot, talk_id, venue) -> pulp.LpVariable:
+    def start_var(self, slot: Slot, talk_id: TalkID, venue: VenueID) -> pulp.LpVariable:
         """A 0/1 variable that is 1 if talk with ID talk_id begins in this
         slot and venue"""
         name = "B_%d_%d_%d" % (slot, talk_id, venue)
@@ -51,7 +62,7 @@ class SlotMachine(object):
         self.var_cache[name] = var
         return var
 
-    def active(self, slot, talk_id, venue) -> pulp.LpVariable:
+    def active(self, slot: Slot, talk_id: TalkID, venue: VenueID) -> pulp.LpVariable:
         """A 0/1 variable that is 1 if talk with ID talk_id is active during
         this slot and venue"""
         name = "A_%d_%d_%d" % (slot, talk_id, venue)
@@ -59,8 +70,8 @@ class SlotMachine(object):
             return self.var_cache[name]
 
         if (
-            slot in self.talk_permissions[talk_id]["slots"]
-            and venue in self.talk_permissions[talk_id]["venues"]
+            slot in self.talks_by_id[talk_id].allowed_slots
+            and venue in self.talks_by_id[talk_id].venues
         ):
             variable = pulp.LpVariable(name, cat="Binary")
         else:
@@ -68,7 +79,7 @@ class SlotMachine(object):
 
         duration = self.talks_by_id[talk_id].duration
         definition = pulp.lpSum(
-            self.start_var(s, talk_id, venue)
+            self.start_var(Slot(s), talk_id, venue)
             for s in range(slot, max(-1, slot - duration), -1)
         )
 
@@ -76,7 +87,9 @@ class SlotMachine(object):
         self.var_cache[name] = variable
         return variable
 
-    def get_problem(self, venues, talks: Iterable[Talk], old_talks) -> pulp.LpProblem:
+    def get_problem(
+        self, venues: set[VenueID], talks: list[Talk], old_talks: list[OldTalk]
+    ) -> pulp.LpProblem:
         # Reset problem and cached variables
         self.problem = pulp.LpProblem("Scheduler", pulp.LpMaximize)
         self.var_cache = {}
@@ -121,29 +134,29 @@ class SlotMachine(object):
             + 10
             * pulp.lpSum(
                 # We'd like talks with a slot & venue to try and stay there if they can
-                self.active(s, talk_id, venue)
+                self.active(Slot(s), talk_id, venue)
                 for (slot, talk_id, venue) in old_talks
                 for s in range(slot, slot + self.talks_by_id[talk_id].duration)
             )
             + 5
             * pulp.lpSum(
                 # And we'd prefer to just move stage rather than slot
-                self.active(s, talk_id, v)
+                self.active(Slot(s), talk_id, v)
                 for (slot, talk_id, _) in old_talks
                 for s in range(slot, slot + self.talks_by_id[talk_id].duration)
-                for v in self.talk_permissions[talk_id]["venues"]
+                for v in self.talks_by_id[talk_id].venues
             )
             + 1
             * pulp.lpSum(
                 # But if they have to move slot, 60mins either way is ok
-                self.active(s, talk_id, v)
+                self.active(Slot(s), talk_id, v)
                 for (slot, talk_id, _) in old_talks
                 for s in range(slot - 6, slot + self.talks_by_id[talk_id].duration + 6)
-                for v in self.talk_permissions[talk_id]["venues"]
+                for v in self.talks_by_id[talk_id].venues
             )
         )
 
-        talks_by_speaker: dict[str, list[int]] = {}
+        talks_by_speaker: dict[str, list[TalkID]] = {}
         for talk in talks:
             for speaker in talk.speakers:
                 talks_by_speaker.setdefault(speaker, []).append(talk.id)
@@ -163,7 +176,7 @@ class SlotMachine(object):
                     )
         return self.problem
 
-    def schedule_talks(self, talks: Iterable[Talk], old_talks=[]):
+    def schedule_talks(self, talks: list[Talk], old_talks: list[OldTalk] = []):
         start = time.time()
 
         self.log.info("Generating schedule problem...")
@@ -197,30 +210,45 @@ class SlotMachine(object):
             for slot in self.slots_available
             for talk in talks
             for venue in venues
-            if pulp.value(self.start_var(slot, talk.id, venue))
+            if pulp.value(self.start_var(slot, talk.id, venue)) == 1
         ]
 
     @classmethod
-    def num_slots(self, start_time, end_time):
-        return int((end_time - start_time).total_seconds() / 60 / 10)
+    def num_slots(cls, start_time: datetime, end_time: datetime) -> SlotCount:
+        return SlotCount(int((end_time - start_time).total_seconds() / 60 / 10))
 
     @classmethod
-    def calculate_slots(self, event_start, range_start, range_end, spacing_slots=1):
+    def calculate_slots(
+        cls,
+        event_start: datetime,
+        range_start: datetime,
+        range_end: datetime,
+        spacing_slots: SlotCount = SlotCount(1),
+    ) -> list[Slot]:
         slot_start = int((range_start - event_start).total_seconds() / 60 / 10)
         # We add the number of slots that must be between events to the end to
         # allow events to finish in the last period of the schedule
-        return range(
-            slot_start,
-            slot_start + SlotMachine.num_slots(range_start, range_end) + spacing_slots,
+        return cast(
+            list[Slot],
+            list(
+                range(
+                    slot_start,
+                    slot_start
+                    + SlotMachine.num_slots(range_start, range_end)
+                    + spacing_slots,
+                )
+            ),
         )
 
-    def calc_time(self, event_start: datetime, slots: int):
+    def calc_time(self, event_start: datetime, slots: int) -> datetime:
         return event_start + relativedelta.relativedelta(minutes=slots * 10)
 
-    def calc_slot(self, event_start: datetime, time: datetime):
-        return int((time - event_start).total_seconds() / 60 / 10)
+    def calc_slot(self, event_start: datetime, time: datetime) -> Slot:
+        return Slot(int((time - event_start).total_seconds() / 60 / 10))
 
-    def schedule(self, schedule: dict, spacing_slots: int = 1) -> list[dict]:
+    def schedule(
+        self, schedule: dict, spacing_slots: SlotCount = SlotCount(1)
+    ) -> list[dict]:
         talks = []
         talk_data = {}
         old_slots = []
@@ -231,9 +259,9 @@ class SlotMachine(object):
 
         for event in schedule:
             talk_data[event["id"]] = event
-            spacing_slots = event.get("spacing_slots", spacing_slots)
-            slots = []
-            preferred_slots = []
+            spacing_slots = SlotCount(event.get("spacing_slots", spacing_slots))
+            slots: set[Slot] = set()
+            preferred_slots: set[Slot] = set()
 
             for trange in event["time_ranges"]:
                 event_slots = SlotMachine.calculate_slots(
@@ -242,7 +270,7 @@ class SlotMachine(object):
                     parser.parse(trange["end"]),
                     spacing_slots,
                 )
-                slots.extend(event_slots)
+                slots.update(event_slots)
 
             for trange in event.get("preferred_time_ranges", []):
                 event_slots = SlotMachine.calculate_slots(
@@ -251,23 +279,19 @@ class SlotMachine(object):
                     parser.parse(trange["end"]),
                     spacing_slots,
                 )
-                preferred_slots.extend(event_slots)
+                preferred_slots.update(event_slots)
 
-            self.slots_available = self.slots_available.union(set(slots))
-
-            self.talk_permissions[event["id"]] = {
-                "slots": slots,
-                "venues": event["valid_venues"],
-            }
+            self.slots_available = self.slots_available.union(slots)
 
             talks.append(
-                self.Talk(
+                Talk(
                     id=event["id"],
+                    allowed_slots=slots,
                     venues=event["valid_venues"],
                     speakers=event["speakers"],
                     # We add the number of spacing slots that must be between
                     # events to the duration
-                    duration=int(event["duration"] / 10) + spacing_slots,
+                    duration=SlotCount(int(event["duration"] / 10) + spacing_slots),
                     preferred_venues=event.get("preferred_venues", []),
                     preferred_slots=preferred_slots,
                 )
@@ -290,7 +314,7 @@ class SlotMachine(object):
 
         return list(talk_data.values())
 
-    def schedule_from_file(self, infile, outfile):
+    def schedule_from_file(self, infile: str, outfile: str) -> None:
         schedule = json.load(open(infile))
 
         result = self.schedule(schedule)
