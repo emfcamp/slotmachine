@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime
 from dateutil import parser, relativedelta
 from dataclasses import dataclass, field
-from typing import Iterable, NewType, cast
+from typing import NewType, cast
 import json
 import time
 import logging

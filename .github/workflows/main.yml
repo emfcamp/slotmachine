@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.7, 3.8]
+        python-version: [3.11]
 
     steps:
     - uses: actions/checkout@v2
@@ -19,11 +19,9 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get install coinor-cbc
-        python -m pip install --upgrade pip
-        pip install flake8==3.8.3 black==19.10b0 pytest==5.4.3
-        pip install -e .
+        python -m pip install --upgrade pip poetry
+        poetry install --with dev
     - name: Test with pytest
       run: |
-        black --check ./slotmachine ./tests
-        flake8
-        pytest
+        poetry run ruff check ./
+        poetry run pytest

@@ -12,6 +12,13 @@ pulp = "2.1"
 python-dateutil = ">=2.5.3"
 
 
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.2.0"
+pytest = "^8.0.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+ignore = ["E741"]
