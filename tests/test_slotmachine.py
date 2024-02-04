@@ -24,6 +24,7 @@ def talk(
     venues: list[int],
     speakers: list[str],
     slots: Iterable[Slot] | Iterable[int],
+    must_schedule_after: list[int] = [],
 ) -> Talk:
     return Talk(
         id=TalkID(id),
@@ -31,6 +32,7 @@ def talk(
         venues={VenueID(vid) for vid in venues},
         speakers=speakers,
         allowed_slots={Slot(s) for s in slots},
+        must_schedule_after={TalkID(t) for t in must_schedule_after},
     )
 
 
@@ -253,3 +255,41 @@ class ScheduleTalksTestCase(unittest.TestCase):
 
         # Talk 1 must now be in slot 3 or 4
         self.assertIn(talks_slots[1], [3, 4])
+
+    def test_must_schedule_after(self):
+        avail_slots = SlotMachine.calculate_slots(
+            parser.parse("2016-08-06 13:00"),
+            parser.parse("2016-08-06 13:00"),
+            parser.parse("2016-08-06 15:00"),
+        )
+        _talk = partial(talk, slots=avail_slots[:], venues=[101])
+        talk_defs = [
+            _talk(
+                id=1, duration=3 + 1, speakers=["Speaker 1"], must_schedule_after=[2]
+            ),
+            _talk(
+                id=2, duration=2 + 1, speakers=["Speaker 2"], must_schedule_after=[3]
+            ),
+            _talk(
+                id=3, duration=2 + 1, speakers=["Speaker 3"], must_schedule_after=[4]
+            ),
+            _talk(id=4, duration=2 + 1, speakers=["Speaker 4"]),
+        ]
+        old_talks = [(0, 1, 101), (3, 2, 101), (6, 3, 101), (9, 4, 101)]
+        solved = self.schedule_and_basic_asserts(
+            talk_defs, avail_slots, old_talks=old_talks
+        )
+
+        slots, talks, venues = unzip(solved)
+        talks_slots = dict(zip(talks, slots))
+
+        # The talks are now in the reverse order of the one they were in in old_talks.
+        self.assertEqual(
+            {
+                4: 0,
+                3: 3,
+                2: 6,
+                1: 9,
+            },
+            talks_slots,
+        )

@@ -29,6 +29,7 @@ class Talk:
     preferred_venues: set[VenueID] = field(default_factory=set)
     allowed_slots: set[Slot] = field(default_factory=set)
     preferred_slots: set[Slot] = field(default_factory=set)
+    must_schedule_after: set[TalkID] = field(default_factory=set)
 
 
 class SlotMachine(object):
@@ -87,6 +88,34 @@ class SlotMachine(object):
         self.var_cache[name] = variable
         return variable
 
+    def start_slot(self, talk_id: TalkID) -> pulp.LpVariable:
+        """A variable that is the number of the slot that talk ID is scheduled to begin."""
+        name = "S_start_%d" % (talk_id,)
+        if name in self.var_cache:
+            return self.var_cache[name]
+
+        variable = pulp.LpVariable(name, cat="Integer")
+        definition = pulp.lpSum(
+            self.start_var(slot, talk_id, venue) * slot
+            for slot in self.talks_by_id[talk_id].allowed_slots
+            for venue in self.talks_by_id[talk_id].venues
+        )
+        self.problem.addConstraint(variable == definition)
+        self.var_cache[name] = variable
+        return variable
+
+    def end_slot(self, talk_id: TalkID) -> pulp.LpVariable:
+        """A variable that is the number of the slot that talk ID is scheduled to begin."""
+        name = "S_end_%d" % (talk_id,)
+        if name in self.var_cache:
+            return self.var_cache[name]
+
+        variable = pulp.LpVariable(name, cat="Integer")
+        definition = self.start_slot(talk_id) + self.talks_by_id[talk_id].duration
+        self.problem.addConstraint(variable == definition)
+        self.var_cache[name] = variable
+        return variable
+
     def get_problem(
         self, venues: set[VenueID], talks: list[Talk], old_talks: list[OldTalk]
     ) -> pulp.LpProblem:
@@ -106,6 +135,13 @@ class SlotMachine(object):
                 )
                 == 1
             )
+
+        # Talks which must precede other talks do that
+        for talk in talks:
+            for schedule_before in talk.must_schedule_after:
+                self.problem.addConstraint(
+                    self.end_slot(schedule_before) <= self.start_slot(talk.id)
+                )
 
         # At most one talk may be active in a given venue and slot.
         for v in venues:
