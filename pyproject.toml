@@ -6,7 +6,10 @@ readme = "README.md"
 authors = [{ name = "Electromagnetic Field" }]
 requires-python = ">=3.13"
 classifiers = ["Private :: Do Not Upload"]
-dependencies = ['PuLP<3.3', 'python-dateutil>=2.5.3']
+dependencies = ['ortools>=9.0', 'python-dateutil>=2.5.3']
+
+[project.scripts]
+slotmachine = "slotmachine.__main__:main"
 
 [build-system]
 requires = ["uv_build>=0.8.13,<0.9.0"]
