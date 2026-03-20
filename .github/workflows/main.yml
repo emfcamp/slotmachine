@@ -25,7 +25,6 @@ jobs:
       uses: astral-sh/setup-uv@v6
     - name: Install dependencies
       run: |
-        sudo apt-get install coinor-cbc
         uv sync --locked --all-extras --dev
     - name: Run tests
       run: |
