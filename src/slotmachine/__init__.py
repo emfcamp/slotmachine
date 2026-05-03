@@ -1,4 +1,4 @@
-from .data import SchedulingProblem, SchedulingSolution, Talk
+from .data import SchedulingProblem, SchedulingSolution, Talk, VenueTimes
 from .slotmachine import SlotMachine, Unsatisfiable
 
 __all__ = [
@@ -7,4 +7,5 @@ __all__ = [
     "SlotMachine",
     "Talk",
     "Unsatisfiable",
+    "VenueTimes",
 ]

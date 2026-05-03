@@ -1,6 +1,6 @@
 from dateutil.parser import parse as ts
 
-from slotmachine.data import SchedulingProblem, Talk
+from slotmachine.data import SchedulingProblem, Talk, VenueTimes
 from slotmachine.slots import SlottedTalk, calculate_slots
 
 
@@ -18,17 +18,15 @@ def test_slot_conversion():
     talks = [
         Talk(
             id=1,
-            allowed_times=[(ts("2016-08-05 13:00"), ts("2016-08-05 14:00"))],
+            venue_times=[VenueTimes(venue=101, times=[(ts("2016-08-05 13:00"), ts("2016-08-05 14:00"))])],
             duration=60,
             speakers={1},
-            allowed_venues={101},
         ),
         Talk(
             id=2,
-            allowed_times=[(ts("2016-08-05 14:00"), ts("2016-08-05 15:00"))],
+            venue_times=[VenueTimes(venue=102, times=[(ts("2016-08-05 14:00"), ts("2016-08-05 15:00"))])],
             duration=60,
             speakers={2},
-            allowed_venues={102},
         ),
     ]
 
@@ -37,5 +35,6 @@ def test_slot_conversion():
     assert problem.start_time == ts("2016-08-05 13:00")
 
     t = SlottedTalk(talks[1], problem)
-    assert t.allowed_intervals[0] == (6, 12)
+    assert t.venue_intervals[0].venue == 102
+    assert t.venue_intervals[0].intervals[0] == (6, 12)
     assert t.duration == 7  # 60 minutes + changover

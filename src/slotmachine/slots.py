@@ -1,6 +1,7 @@
 """Internal data model which represents time in terms of slots."""
 
 import dataclasses
+from dataclasses import dataclass
 from datetime import datetime
 
 from dateutil import relativedelta
@@ -9,6 +10,14 @@ from .data import SchedulingProblem, SpeakerID, Talk, TalkID, VenueID
 
 type Slot = int
 type SlotInterval = tuple[Slot, Slot]
+
+
+@dataclass
+class SlottedVenueIntervals:
+    """A mirror of the VenueTimes class with interval time measured in slots."""
+
+    venue: VenueID
+    intervals: list[SlotInterval]
 
 
 def calc_slot(range_start: datetime, range_end: datetime, slot_duration: int) -> Slot:
@@ -49,10 +58,10 @@ class SlottedTalk:
     duration: Slot
     speakers: set[SpeakerID]
 
-    allowed_venues: set[VenueID]
     preferred_venues: set[VenueID]
 
-    allowed_intervals: list[SlotInterval]
+    #: The venues the talk may be scheduled in, each with the slot intervals allowed in that venue.
+    venue_intervals: list[SlottedVenueIntervals]
     preferred_intervals: list[SlotInterval]
 
     start: Slot | None
@@ -67,17 +76,26 @@ class SlottedTalk:
         self.duration = (talk.duration + talk.minutes_after) // problem.slot_duration
 
         self.speakers = talk.speakers
-        self.allowed_venues = talk.allowed_venues
         self.preferred_venues = talk.preferred_venues
 
         changeover_after = talk.minutes_after // problem.slot_duration
-        self.allowed_intervals = [
-            calculate_slots(problem.start_time, *range, problem.slot_duration, spacing_slots=changeover_after)
-            for range in talk.allowed_times
+        self.venue_intervals = [
+            SlottedVenueIntervals(
+                venue=vt.venue,
+                intervals=[
+                    calculate_slots(
+                        problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
+                    )
+                    for time_range in vt.times
+                ],
+            )
+            for vt in talk.venue_times
         ]
         self.preferred_intervals = [
-            calculate_slots(problem.start_time, *range, problem.slot_duration, spacing_slots=changeover_after)
-            for range in talk.preferred_times
+            calculate_slots(
+                problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
+            )
+            for time_range in talk.preferred_times
         ]
 
         if talk.start_time:
@@ -97,4 +115,4 @@ class SlottedTalk:
         )
 
     def __repr__(self) -> str:
-        return f"<SlottedTalk {self.id}, duration: {self.duration}, speakers: {self.speakers}, venues: {self.allowed_venues}, allowed_intervals: {self.allowed_intervals}>"
+        return f"<SlottedTalk {self.id}, duration: {self.duration}, speakers: {self.speakers}, venue_intervals: {self.venue_intervals}>"
