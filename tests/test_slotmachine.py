@@ -192,7 +192,7 @@ class ScheduleTalksTestCase(unittest.TestCase):
         old_talks = [(0, 1, 101), (5, 2, 102), (8, 3, 101)]
         solved = self.schedule_and_basic_asserts(talk_defs, old_talks=old_talks)
 
-        slots, talks, venues = unzip(solved)
+        slots, talks, _venues = unzip(solved)
         talks_slots = dict(zip(talks, slots, strict=False))
 
         # There's no reason to move talk 1, so the speaker's only available afterwards
@@ -220,7 +220,7 @@ class ScheduleTalksTestCase(unittest.TestCase):
         old_talks = [(0, 1, 101), (0, 2, 102), (6, 3, 102), (8, 4, 101)]
         solved = self.schedule_and_basic_asserts(talk_defs, old_talks=old_talks)
 
-        slots, talks, venues = unzip(solved)
+        slots, talks, _venues = unzip(solved)
         talks_slots = dict(zip(talks, slots, strict=False))
 
         # Talk 1 must now be in slot 3 or 4
