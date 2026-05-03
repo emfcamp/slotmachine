@@ -45,17 +45,28 @@ class SlotMachine:
 
         for talk in talks:
             duration = talk.duration
-            allowed_venues = [v for v in venues if v in talk.venues]
 
-            # Calculate start slots that a talk can actually be in, filtering
-            # intervals to remove any that are too small
-            allowed_intervals = [
-                [int_start, int_end - duration + 1]
-                for int_start, int_end in talk.slot_intervals
-                if int_end - int_start + 1 >= duration
-            ]
+            # Build a per-venue map of allowed time intervals, keeping only
+            # venues that exist in this schedule and intervals large enough to
+            # fit the talk.
+            # NOTE: This is intentionally designed to be replaced during the
+            # refactor that allows per-venue timeslots.
+            venue_allowed_intervals: dict[VenueID, list[tuple[Slot, Slot]]] = {}
+            for v in talk.venues:
+                if v not in venues:
+                    continue
+                for int_start, int_end in talk.slot_intervals:
+                    if int_end - int_start + 1 >= duration:
+                        venue_allowed_intervals.setdefault(v, []).append((int_start, int_end))
 
-            # If we dont't have any intervals, or any intervals large enough to
+            allowed_venues = list(venue_allowed_intervals.keys())
+            allowed_intervals = {
+                (int_start, int_end - duration + 1)
+                for intervals in venue_allowed_intervals.values()
+                for int_start, int_end in intervals
+            }
+
+            # If we don't have any intervals, or any intervals large enough to
             # fit this talk, or no venues specified exist, create a variable
             # that cannot possibly be satisfied for warning purposes. We do
             # this because otherwise the valid talk domain or venues would end
@@ -69,7 +80,7 @@ class SlotMachine:
 
             # The highest slot a talk can occupy, used later for setting
             # variable search bounds
-            talk_slot_max[talk.id] = allowed_intervals[-1][1]
+            talk_slot_max[talk.id] = max(int_end for _, int_end in allowed_intervals)
 
             # Int var representing the possible talk slots inside the set of
             # permitted intervals for this talk
@@ -99,6 +110,26 @@ class SlotMachine:
                     start_var, duration, start_var + duration, active, f"talk_venue_interval_{talk.id}_{v}"
                 )
                 venue_intervals.setdefault(v, []).append(optional_talk_venue_interval)
+
+                # Constrain this talk to only be allowed to be active in this
+                # venue in time intervals where it is allowed to be scheduled
+                in_interval_vars: list[cp_model.IntVar] = []
+                for i, (int_start, int_end) in enumerate(venue_allowed_intervals[v]):
+                    in_this_venue = self.model.new_bool_var(f"talk_venue_interval_allowed_{talk.id}_{v}_{i}")
+                    self.model.add(start_var >= int_start).only_enforce_if(in_this_venue)
+                    self.model.add(start_var <= int_end - duration + 1).only_enforce_if(in_this_venue)
+
+                    # We use an implication rather than directly referring to
+                    # "active" because otherwise it would be impossible to have
+                    # more than one possible time window in a given venue
+                    self.model.add_implication(in_this_venue, active)
+                    in_interval_vars.append(in_this_venue)
+
+                # At least one of the venue's intervals must be active
+                #
+                # This is unpacked rather than concatenated because otherwise
+                # you end up in mypy hell due to ortools internal types
+                self.model.add_bool_or([active.Not(), *in_interval_vars])
 
             # Exactly one venue must be chosen for a talk
             self.model.add(cp_model.LinearExpr.sum(venue_active_vars) == 1)
