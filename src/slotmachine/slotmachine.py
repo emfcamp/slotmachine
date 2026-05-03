@@ -1,20 +1,12 @@
-from __future__ import annotations
-
 import logging
 import time
-from collections import namedtuple
 from collections.abc import Iterable
 from datetime import datetime
 
 from dateutil import parser, relativedelta
 from ortools.sat.python import cp_model
 
-Talk = namedtuple(
-    "Talk",
-    ("id", "duration", "venues", "speakers", "slot_intervals", "preferred_venues", "preferred_intervals"),
-)
-# If slot_intervals, preferred venues and/or slots are not specified, assume no restrictions/preferences
-Talk.__new__.__defaults__ = ([], [], [])
+from .data import Talk
 
 type TalkID = int
 type VenueID = int
