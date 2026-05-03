@@ -32,7 +32,7 @@ class SlotMachine:
 
         # Vars representing the selected talk slot and venue
         self.talk_slot_vars: dict[TalkID, cp_model.IntVar] = {}
-        self.talk_venue_active_vars: dict[tuple[TalkID, VenueID], cp_model.BoolVar] = {}
+        self.talk_venue_active_vars: dict[tuple[TalkID, VenueID], cp_model.IntVar] = {}
 
     def get_problem(self, venues, talks: list[Talk], old_talks) -> cp_model.CpModel:
         self.model = cp_model.CpModel()
@@ -97,7 +97,7 @@ class SlotMachine:
             # slot/venue placements inside our permitted intervals, of which
             # only one will be chosen (enforced by the followup constraint).
             # The active bool var will be true for the slot that is selected.
-            venue_active_vars: list[cp_model.BoolVar] = []
+            venue_active_vars: list[cp_model.IntVar] = []
             for v in allowed_venues:
                 active = self.model.new_bool_var(f"talk_venue_active_{talk.id}_{v}")
                 self.talk_venue_active_vars[(talk.id, v)] = active
