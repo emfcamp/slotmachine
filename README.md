@@ -6,13 +6,13 @@ This is used to generate the schedule for [Electromagnetic Field](https://www.em
 
 ## Requirements
 
-You'll need the [COIN-OR](https://www.coin-or.org/) [CBC](https://projects.coin-or.org/Cbc) solver installed to use this library.
-`apt-get install coinor-cbc` or `brew tap coin-or-tools/coinor && brew install cbc`.
+This uses [OR-Tools](https://github.com/google/or-tools), which should be automatically installed from pypy.
 
 ## Acknowledgements
 
-The original concept and code for this library is from [David MacIver](http://www.drmaciver.com/).
-For more information on this approach, see David's talk
-[Easy solutions to hard problems](https://www.youtube.com/watch?v=OkusHEBOhmQ) from PyCon UK 2016.
+The concept and code for the original [CBC](https://projects.coin-or.org/Cbc)-based version of this library is from [David MacIver](http://www.drmaciver.com/). 
+
+For more information on this approach, see David's talk [Easy solutions to hard
+problems](https://www.youtube.com/watch?v=OkusHEBOhmQ) from PyCon UK 2016.
 
 A similar library with a slightly different approach is [conference-scheduler](http://conference-scheduler.readthedocs.io/en/latest/).

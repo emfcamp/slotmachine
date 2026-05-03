@@ -10,6 +10,10 @@ def unzip(iter):
     return zip(*iter, strict=True)
 
 
+def _slots_in_intervals(slot, intervals) -> bool:
+    return any(lo <= slot <= hi for lo, hi in intervals)
+
+
 class UtilTestCase(unittest.TestCase):
     def test_calculate_slots(self):
         event_start = parser.parse("2016-08-05 13:00")
@@ -19,17 +23,17 @@ class UtilTestCase(unittest.TestCase):
             parser.parse("2016-08-05 14:00"),
         )
         # the final slot is because all talks are made one slot longer for changeover
-        assert slots_minimal == range(0, 6 + 1)
+        assert slots_minimal == (0, 6)
         slots_sat_13_16 = SlotMachine.calculate_slots(
             event_start,
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 16:00"),
         )
-        assert slots_sat_13_16 == range(144, 144 + 18 + 1)
+        assert slots_sat_13_16 == (144, 144 + 18)
 
 
 class ScheduleTalksTestCase(unittest.TestCase):
-    def schedule_and_basic_asserts(self, talk_defs, talk_permissions, avail_slots, old_talks=None):
+    def schedule_and_basic_asserts(self, talk_defs, old_talks=None):
         if old_talks is None:
             old_talks = []
 
@@ -37,8 +41,6 @@ class ScheduleTalksTestCase(unittest.TestCase):
         talk_defs_by_id = {t.id: t for t in talk_defs}
 
         sm = SlotMachine()
-        sm.talk_permissions = talk_permissions
-        sm.slots_available = avail_slots
 
         solved = sm.schedule_talks(talk_defs, old_talks=old_talks)
         slots, talks, venues = unzip(solved)
@@ -48,18 +50,13 @@ class ScheduleTalksTestCase(unittest.TestCase):
         # All slots/venue tuples must be different
         slot_venues = list(zip(slots, venues, strict=False))
         self.assertEqual(sorted(set(slot_venues)), sorted(slot_venues))
-        # Check slots are valid
-        self.assertTrue(all(s in avail_slots for s in slots))
 
         used_slots = defaultdict(set)
         for slot, talk, venue in solved:
             talk_def = talk_defs_by_id[talk]
-            talk_perms = talk_permissions[talk]
 
             self.assertIn(venue, talk_def.venues)
-
-            self.assertIn(slot, talk_perms["slots"])
-            self.assertIn(venue, talk_perms["venues"])
+            self.assertTrue(_slots_in_intervals(slot, talk_def.slot_intervals))
 
             for i in range(talk_def.duration):
                 self.assertNotIn(slot + i, used_slots[venue])
@@ -67,163 +64,133 @@ class ScheduleTalksTestCase(unittest.TestCase):
 
         return solved
 
-    def schedule_and_assert_fails(self, talk_defs, talk_permissions, avail_slots, old_talks=None):
+    def schedule_and_assert_fails(self, talk_defs, old_talks=None):
         if old_talks is None:
             old_talks = []
 
         sm = SlotMachine()
-        sm.talk_permissions = talk_permissions
-        sm.slots_available = avail_slots
 
         with self.assertRaises(Unsatisfiable):
             sm.schedule_talks(talk_defs, old_talks=old_talks)
 
     def test_simple(self):
-        talk_defs = [
-            Talk(id=1, duration=3 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=3 + 1, venues=[101], speakers=["Speaker 2"]),
-            Talk(id=3, duration=3 + 1, venues=[101], speakers=["Speaker 3"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 15:00"),
         )
-        talk_permissions = {  # why isn't this on the Talk object?
-            1: {
-                "slots": avail_slots[:],
-                "venues": [101],
-            },  # why is venues in two places?
-            2: {"slots": avail_slots[:], "venues": [101]},
-            3: {"slots": avail_slots[:], "venues": [101]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=3 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(id=2, duration=3 + 1, venues=[101], speakers=["Speaker 2"], slot_intervals=[avail_slots]),
+            Talk(id=3, duration=3 + 1, venues=[101], speakers=["Speaker 3"], slot_intervals=[avail_slots]),
+        ]
 
-        solved = self.schedule_and_basic_asserts(talk_defs, talk_permissions, avail_slots)
+        solved = self.schedule_and_basic_asserts(talk_defs)
 
         # Solution should be stable
-        solved_second = self.schedule_and_basic_asserts(
-            talk_defs, talk_permissions, avail_slots, old_talks=solved
-        )
+        solved_second = self.schedule_and_basic_asserts(talk_defs, old_talks=solved)
         self.assertEqual(solved, solved_second)
 
     def test_too_many_talks(self):
         # This should just exceed the number of available slots (12 + 1)
-        talk_defs = [
-            Talk(id=1, duration=4 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=4 + 1, venues=[101], speakers=["Speaker 2"]),
-            Talk(id=3, duration=3 + 1, venues=[101], speakers=["Speaker 3"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 15:00"),
         )
-        talk_permissions = {
-            1: {"slots": avail_slots[:], "venues": [101]},
-            2: {"slots": avail_slots[:], "venues": [101]},
-            3: {"slots": avail_slots[:], "venues": [101]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=4 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(id=2, duration=4 + 1, venues=[101], speakers=["Speaker 2"], slot_intervals=[avail_slots]),
+            Talk(id=3, duration=3 + 1, venues=[101], speakers=["Speaker 3"], slot_intervals=[avail_slots]),
+        ]
 
-        self.schedule_and_assert_fails(talk_defs, talk_permissions, avail_slots)
+        self.schedule_and_assert_fails(talk_defs)
 
     def test_two_venues(self):
         # talk 3 should end up in venue 102
-        talk_defs = [
-            Talk(id=1, duration=5 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=2 + 1, venues=[102], speakers=["Speaker 2"]),
-            Talk(id=3, duration=2 + 1, venues=[101, 102], speakers=["Speaker 3"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 14:00"),
         )
-        talk_permissions = {
-            1: {"slots": avail_slots[:], "venues": [101]},
-            2: {"slots": avail_slots[:], "venues": [102]},
-            3: {"slots": avail_slots[:], "venues": [101, 102]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=5 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(id=2, duration=2 + 1, venues=[102], speakers=["Speaker 2"], slot_intervals=[avail_slots]),
+            Talk(
+                id=3, duration=2 + 1, venues=[101, 102], speakers=["Speaker 3"], slot_intervals=[avail_slots]
+            ),
+        ]
 
-        solved = self.schedule_and_basic_asserts(talk_defs, talk_permissions, avail_slots)
+        solved = self.schedule_and_basic_asserts(talk_defs)
 
         talk_venues = dict([(t, v) for s, t, v in solved])
         self.assertEqual(talk_venues[3], 102)
 
     def test_venue_too_full(self):
         # Talks 1 and 3 won't fit into 101 together, and 3 and 4 won't fit in 102 together
-        talk_defs = [
-            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=4 + 1, venues=[101, 102], speakers=["Speaker 2"]),
-            Talk(id=3, duration=5 + 1, venues=[101, 102], speakers=["Speaker 3"]),
-            Talk(id=4, duration=7 + 1, venues=[102], speakers=["Speaker 4"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 15:00"),
         )
-        talk_permissions = {
-            1: {"slots": avail_slots[:], "venues": [101]},
-            2: {"slots": avail_slots[:], "venues": [101, 102]},
-            3: {"slots": avail_slots[:], "venues": [101, 102]},
-            4: {"slots": avail_slots[:], "venues": [102]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(
+                id=2, duration=4 + 1, venues=[101, 102], speakers=["Speaker 2"], slot_intervals=[avail_slots]
+            ),
+            Talk(
+                id=3, duration=5 + 1, venues=[101, 102], speakers=["Speaker 3"], slot_intervals=[avail_slots]
+            ),
+            Talk(id=4, duration=7 + 1, venues=[102], speakers=["Speaker 4"], slot_intervals=[avail_slots]),
+        ]
 
-        self.schedule_and_assert_fails(talk_defs, talk_permissions, avail_slots)
+        self.schedule_and_assert_fails(talk_defs)
 
     def test_venue_clash(self):
         # Talks 2 and 3 must move to accommodate talk 4
-        talk_defs = [
-            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=4 + 1, venues=[101, 102], speakers=["Speaker 2"]),
-            Talk(id=3, duration=4 + 1, venues=[101, 102], speakers=["Speaker 3"]),
-            Talk(id=4, duration=7 + 1, venues=[102], speakers=["Speaker 4"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 15:00"),
         )
-        talk_permissions = {
-            1: {"slots": avail_slots[:], "venues": [101]},
-            2: {"slots": avail_slots[:], "venues": [101, 102]},
-            3: {"slots": avail_slots[:], "venues": [101, 102]},
-            4: {"slots": avail_slots[:], "venues": [102]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(
+                id=2, duration=4 + 1, venues=[101, 102], speakers=["Speaker 2"], slot_intervals=[avail_slots]
+            ),
+            Talk(
+                id=3, duration=4 + 1, venues=[101, 102], speakers=["Speaker 3"], slot_intervals=[avail_slots]
+            ),
+            Talk(id=4, duration=7 + 1, venues=[102], speakers=["Speaker 4"], slot_intervals=[avail_slots]),
+        ]
 
         old_talks = [(0, 1, 101), (2, 2, 102), (7, 3, 102)]
-        solved = self.schedule_and_basic_asserts(
-            talk_defs, talk_permissions, avail_slots, old_talks=old_talks
-        )
+        solved = self.schedule_and_basic_asserts(talk_defs, old_talks=old_talks)
 
         # Talk 1 shouldn't move
         self.assertIn((0, 1, 101), solved)
 
     def test_speaker_clash(self):
         # Talk 4 is by Speaker 1
-        talk_defs = [
-            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=7 + 1, venues=[102], speakers=["Speaker 2"]),
-            Talk(id=3, duration=4 + 1, venues=[101, 102], speakers=["Speaker 3"]),
-            Talk(id=4, duration=4 + 1, venues=[101, 102], speakers=["Speaker 1"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 15:00"),
         )
-        talk_permissions = {
-            1: {"slots": avail_slots[:], "venues": [101]},
-            2: {"slots": avail_slots[:], "venues": [101, 102]},
-            3: {"slots": avail_slots[:], "venues": [101, 102]},
-            4: {"slots": avail_slots[:], "venues": [102]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(id=2, duration=7 + 1, venues=[102], speakers=["Speaker 2"], slot_intervals=[avail_slots]),
+            Talk(
+                id=3, duration=4 + 1, venues=[101, 102], speakers=["Speaker 3"], slot_intervals=[avail_slots]
+            ),
+            Talk(
+                id=4, duration=4 + 1, venues=[101, 102], speakers=["Speaker 1"], slot_intervals=[avail_slots]
+            ),
+        ]
 
         # Either talk 2 or 3 will have to move
         old_talks = [(0, 1, 101), (5, 2, 102), (8, 3, 101)]
-        solved = self.schedule_and_basic_asserts(
-            talk_defs, talk_permissions, avail_slots, old_talks=old_talks
-        )
+        solved = self.schedule_and_basic_asserts(talk_defs, old_talks=old_talks)
 
         slots, talks, venues = unzip(solved)
         talks_slots = dict(zip(talks, slots, strict=False))
@@ -233,29 +200,25 @@ class ScheduleTalksTestCase(unittest.TestCase):
 
     def test_talk_clash(self):
         # Talk 4 now has to precede talk 1. Talks 2 and 3 must remain in 102
-        talk_defs = [
-            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"]),
-            Talk(id=2, duration=5 + 1, venues=[101, 102], speakers=["Speaker 2"]),
-            Talk(id=3, duration=5 + 1, venues=[101, 102], speakers=["Speaker 3"]),
-            Talk(id=4, duration=2 + 1, venues=[101, 102], speakers=["Speaker 4"]),
-        ]
         avail_slots = SlotMachine.calculate_slots(
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 13:00"),
             parser.parse("2016-08-06 15:00"),
         )
-        talk_permissions = {
-            1: {"slots": avail_slots[:], "venues": [101]},
-            2: {"slots": avail_slots[:], "venues": [101, 102]},
-            3: {"slots": avail_slots[:], "venues": [101, 102]},
-            4: {"slots": [0, 1, 2], "venues": [101, 102]},
-        }
+        talk_defs = [
+            Talk(id=1, duration=7 + 1, venues=[101], speakers=["Speaker 1"], slot_intervals=[avail_slots]),
+            Talk(
+                id=2, duration=5 + 1, venues=[101, 102], speakers=["Speaker 2"], slot_intervals=[avail_slots]
+            ),
+            Talk(
+                id=3, duration=5 + 1, venues=[101, 102], speakers=["Speaker 3"], slot_intervals=[avail_slots]
+            ),
+            Talk(id=4, duration=2 + 1, venues=[101, 102], speakers=["Speaker 4"], slot_intervals=[(0, 2)]),
+        ]
 
         # Talk 4 was previously scheduled after talk 1
         old_talks = [(0, 1, 101), (0, 2, 102), (6, 3, 102), (8, 4, 101)]
-        solved = self.schedule_and_basic_asserts(
-            talk_defs, talk_permissions, avail_slots, old_talks=old_talks
-        )
+        solved = self.schedule_and_basic_asserts(talk_defs, old_talks=old_talks)
 
         slots, talks, venues = unzip(solved)
         talks_slots = dict(zip(talks, slots, strict=False))
