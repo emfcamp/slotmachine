@@ -1,10 +1,29 @@
+from datetime import timedelta
 from itertools import permutations
 
 import pytest
 from dateutil.parser import parse as ts
+from hypothesis import assume, given
+from hypothesis import strategies as st
 
 from slotmachine import SlotMachine, Talk, Unsatisfiable
 from slotmachine.data import SchedulingProblem, SchedulingSolution, TimeRange
+
+SLOT_DURATION = 10
+
+
+@st.composite
+def durations(draw, min_duration=10, max_duration=120):
+    """Hypothesis strategy to generate a talk duration which is a multiple of the slot duration."""
+    return (
+        draw(st.integers(min_value=min_duration // SLOT_DURATION, max_value=max_duration // SLOT_DURATION))
+        * SLOT_DURATION
+    )
+
+
+def total_duration(talks: list[Talk]) -> timedelta:
+    """Return the total duration of a list of talks, including changeover time."""
+    return timedelta(minutes=sum(talk.duration + talk.minutes_after for talk in talks))
 
 
 def time_overlaps(range1: TimeRange, range2: TimeRange) -> bool:
@@ -15,7 +34,8 @@ def time_overlaps(range1: TimeRange, range2: TimeRange) -> bool:
 
 
 def schedule_assert_solvable(talks: list[Talk]) -> SchedulingSolution:
-    sm = SlotMachine(SchedulingProblem(talks=talks, slot_duration=10))
+    """Run the scheduler on a list of talks, asserting that it's solveable and the result looks valid."""
+    sm = SlotMachine(SchedulingProblem(talks=talks, slot_duration=SLOT_DURATION))
     solution = sm.solve()
 
     # All talks must be represented
@@ -59,31 +79,25 @@ def schedule_assert_fail(talks: list[Talk]):
         sm.solve()
 
 
-def test_simple():
-    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))]
+@given(st.lists(durations(), min_size=1), durations())
+def test_simple(durations, minutes_after):
+    allowed_times = (ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))
+
     talk_defs = [
         Talk(
-            id=1,
-            duration=30,
+            id=i,
+            duration=durations[i],
             allowed_venues={101},
             speakers={1},
-            allowed_times=allowed_times,
-        ),
-        Talk(
-            id=2,
-            duration=30,
-            allowed_venues={101},
-            speakers={2},
-            allowed_times=allowed_times,
-        ),
-        Talk(
-            id=3,
-            duration=30,
-            allowed_venues={101},
-            speakers={3},
-            allowed_times=allowed_times,
-        ),
+            allowed_times=[allowed_times],
+            minutes_after=minutes_after,
+        )
+        for i in range(0, len(durations))
     ]
+
+    assume(
+        total_duration(talk_defs) <= (allowed_times[1] - allowed_times[0]) + timedelta(minutes=minutes_after)
+    )
 
     solved = schedule_assert_solvable(talk_defs)
 
@@ -92,14 +106,24 @@ def test_simple():
     assert solved == solved_second
 
 
-def test_too_many_talks():
-    """This should just exceed the number of available slots (12 + 1)"""
-    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))]
+@given(st.lists(durations(), min_size=1), durations())
+def test_too_many_talks(durations, minutes_after):
+    allowed_times = (ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))
+
     talk_defs = [
-        Talk(id=1, duration=40, allowed_venues={101}, speakers={1}, allowed_times=allowed_times),
-        Talk(id=2, duration=40, allowed_venues={101}, speakers={2}, allowed_times=allowed_times),
-        Talk(id=3, duration=30, allowed_venues={101}, speakers={3}, allowed_times=allowed_times),
+        Talk(
+            id=i,
+            duration=durations[i],
+            allowed_venues={101},
+            speakers={1},
+            allowed_times=[allowed_times],
+            minutes_after=minutes_after,
+        )
+        for i in range(0, len(durations))
     ]
+    assume(
+        total_duration(talk_defs) > (allowed_times[1] - allowed_times[0]) + timedelta(minutes=minutes_after)
+    )
 
     schedule_assert_fail(talk_defs)
 
