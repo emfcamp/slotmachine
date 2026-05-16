@@ -55,6 +55,23 @@ class Talk:
             return None
         return self.start_time + timedelta(minutes=self.duration)
 
+    def validate(self, slot_duration: int) -> None:
+        if self.duration % slot_duration != 0:
+            raise ValueError(
+                f"Talk {self.id} duration {self.duration} is not a multiple of slot duration {slot_duration}"
+            )
+
+        if self.duration <= 0:
+            raise ValueError(f"Talk {self.id} has an invalid duration: {self.duration}")
+
+        if self.minutes_after % slot_duration != 0:
+            raise ValueError(
+                f"Talk {self.id} minutes_after {self.minutes_after} is not a multiple of slot duration {slot_duration}"
+            )
+
+        if all(end - start < timedelta(minutes=self.duration) for start, end in self.allowed_times):
+            raise ValueError(f"Talk {self.id} has no allowed time ranges long enough to schedule into.")
+
     def to_dict(self) -> dict:
         return {
             "id": self.id,
@@ -113,14 +130,7 @@ class SchedulingProblem:
         self.venues = set(chain.from_iterable(talk.allowed_venues for talk in self.talks))
 
         for talk in self.talks:
-            if talk.duration % self.slot_duration != 0:
-                raise ValueError(
-                    f"Talk {talk.id} duration {talk.duration} is not a multiple of slot duration {self.slot_duration}"
-                )
-            if talk.minutes_after % self.slot_duration != 0:
-                raise ValueError(
-                    f"Talk {talk.id} minutes_after {talk.minutes_after} is not a multiple of slot duration {self.slot_duration}"
-                )
+            talk.validate(self.slot_duration)
 
     @classmethod
     def from_dict(cls, data: dict) -> "SchedulingProblem":

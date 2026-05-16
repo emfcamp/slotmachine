@@ -122,7 +122,7 @@ def test_simple(durations, minutes_after, allowed_times):
     assert solved == solved_second
 
 
-@given(st.lists(durations(), min_size=1), durations(), time_ranges())
+@given(st.lists(durations(), min_size=1), durations(max_duration=60), time_ranges(min_duration=120))
 def test_too_many_talks(durations, minutes_after, allowed_times):
     talk_defs = [
         Talk(
@@ -146,18 +146,17 @@ def test_too_many_talks(durations, minutes_after, allowed_times):
 def test_invalid_allowed_times(duration, minutes_after, allowed_times):
     """Talk with a duration longer than any of its allowed_times slots"""
     assume(all((r[1] - r[0]) < timedelta(minutes=duration) for r in allowed_times))
-    talk_defs = [
-        Talk(
-            id=1,
-            duration=duration,
-            allowed_venues={101},
-            speakers={1},
-            allowed_times=allowed_times,
-            minutes_after=minutes_after,
-        ),
-    ]
+    talk = Talk(
+        id=1,
+        duration=duration,
+        allowed_venues={101},
+        speakers={1},
+        allowed_times=allowed_times,
+        minutes_after=minutes_after,
+    )
 
-    schedule_assert_fail(talk_defs)
+    with pytest.raises(ValueError):
+        talk.validate(10)
 
 
 def test_two_venues():
