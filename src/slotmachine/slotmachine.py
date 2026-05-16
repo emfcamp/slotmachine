@@ -20,7 +20,7 @@ class SlotMachine:
         self.talk_slot_vars: dict[TalkID, cp_model.IntVar] = {}
         self.talk_venue_active_vars: dict[tuple[TalkID, VenueID], cp_model.IntVar] = {}
 
-    def generate_problem(self, venues, talks: list[SlottedTalk]) -> None:
+    def generate_problem(self, venues: set[VenueID], talks: list[SlottedTalk]) -> None:
         self.model = cp_model.CpModel()
         self.talk_slot_vars = {}
         self.talk_venue_active_vars = {}

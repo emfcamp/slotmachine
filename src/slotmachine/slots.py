@@ -16,7 +16,13 @@ def calc_slot(range_start: datetime, range_end: datetime, slot_duration: int) ->
     return int((range_end - range_start).total_seconds() / 60 / slot_duration)
 
 
-def calculate_slots(event_start, range_start, range_end, slot_duration: int, spacing_slots=1) -> SlotInterval:
+def calculate_slots(
+    event_start: datetime,
+    range_start: datetime,
+    range_end: datetime,
+    slot_duration: int,
+    spacing_slots: int = 1,
+) -> SlotInterval:
     slot_start = calc_slot(event_start, range_start, slot_duration)
     # We add the number of slots that must be between events to the end to
     # allow events to finish in the last period of the schedule

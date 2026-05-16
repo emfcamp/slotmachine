@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import chain
+from typing import Any
 
 from dateutil.parser import parse as parse_datetime
 
@@ -13,7 +14,7 @@ type SpeakerID = int
 type TimeRange = tuple[datetime, datetime]
 
 
-def parse_time_range(range: dict) -> tuple[datetime, datetime]:
+def parse_time_range(range: dict[str, str]) -> tuple[datetime, datetime]:
     return (parse_datetime(range["start"]), parse_datetime(range["end"]))
 
 
@@ -72,7 +73,7 @@ class Talk:
         if all(end - start < timedelta(minutes=self.duration) for start, end in self.allowed_times):
             raise ValueError(f"Talk {self.id} has no allowed time ranges long enough to schedule into.")
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "id": self.id,
             "duration": self.duration,
@@ -91,7 +92,7 @@ class Talk:
         }
 
     @classmethod
-    def from_dict(cls, talk: dict) -> "Talk":
+    def from_dict(cls, talk: dict[str, Any]) -> "Talk":
         return Talk(
             id=talk["id"],
             duration=talk["duration"],
@@ -133,7 +134,7 @@ class SchedulingProblem:
             talk.validate(self.slot_duration)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "SchedulingProblem":
+    def from_dict(cls, data: list[dict[str, Any]]) -> "SchedulingProblem":
         talks = []
         for talk_data in data:
             talks.append(Talk.from_dict(talk_data))
@@ -144,5 +145,5 @@ class SchedulingProblem:
 class SchedulingSolution:
     talks: list[Talk]
 
-    def to_dict(self) -> list[dict]:
+    def to_dict(self) -> list[dict[str, Any]]:
         return [talk.to_dict() for talk in self.talks]

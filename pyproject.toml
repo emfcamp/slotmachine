@@ -54,6 +54,17 @@ ignore = [
     "RET504", # unnecessary-assign: nice e.g. when constructing then returning big dicts
 ]
 
+[tool.mypy]
+warn_unused_ignores = true
+disallow_any_generics = true
+disallow_incomplete_defs = true
+warn_redundant_casts = true
+warn_return_any = true
+strict_equality = true
+no_implicit_reexport = true
+warn_unreachable = true
+
+
 [tool.pytest]
 markers = ["slow: slow tests"]
 addopts = ["-m", 'not slow']

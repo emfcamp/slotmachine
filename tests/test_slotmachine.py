@@ -13,7 +13,7 @@ SLOT_DURATION = 10
 
 
 @st.composite
-def durations(draw, min_duration: int = 10, max_duration: int = 120) -> int:
+def durations(draw: st.DrawFn, min_duration: int = 10, max_duration: int = 120) -> int:
     """Hypothesis strategy to generate a talk duration which is a multiple of the slot duration."""
     return (
         draw(st.integers(min_value=min_duration // SLOT_DURATION, max_value=max_duration // SLOT_DURATION))
@@ -23,7 +23,7 @@ def durations(draw, min_duration: int = 10, max_duration: int = 120) -> int:
 
 @st.composite
 def time_ranges(
-    draw, min_duration: int = 10, max_duration: int = 600, within: TimeRange | None = None
+    draw: st.DrawFn, min_duration: int = 10, max_duration: int = 600, within: TimeRange | None = None
 ) -> TimeRange:
     if within is None:
         within = (datetime(2000, 1, 1), datetime(2060, 1, 1))
@@ -89,7 +89,7 @@ def assert_solution_looks_reasonable(problem: SchedulingProblem, solution: Sched
             )
 
 
-def schedule_assert_fail(talks: list[Talk]):
+def schedule_assert_fail(talks: list[Talk]) -> None:
     sm = SlotMachine(SchedulingProblem(talks=talks, slot_duration=10))
 
     with pytest.raises(Unsatisfiable):
