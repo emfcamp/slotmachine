@@ -87,3 +87,6 @@ class SlottedTalk:
             start_time=calc_time(problem.start_time, self.start, problem.slot_duration),
             venue=self.venue,
         )
+
+    def __repr__(self) -> str:
+        return f"<SlottedTalk {self.id}, duration: {self.duration}, speakers: {self.speakers}, venues: {self.allowed_venues}, allowed_intervals: {self.allowed_intervals}>"
