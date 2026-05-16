@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 from itertools import permutations
 
 import pytest
@@ -13,12 +13,24 @@ SLOT_DURATION = 10
 
 
 @st.composite
-def durations(draw, min_duration=10, max_duration=120):
+def durations(draw, min_duration: int = 10, max_duration: int = 120) -> int:
     """Hypothesis strategy to generate a talk duration which is a multiple of the slot duration."""
     return (
         draw(st.integers(min_value=min_duration // SLOT_DURATION, max_value=max_duration // SLOT_DURATION))
         * SLOT_DURATION
     )
+
+
+@st.composite
+def time_ranges(
+    draw, min_duration: int = 10, max_duration: int = 600, within: TimeRange | None = None
+) -> TimeRange:
+    if within is None:
+        within = (datetime(2000, 1, 1), datetime(2060, 1, 1))
+
+    start = draw(st.datetimes(min_value=within[0], max_value=within[1]))
+    duration = draw(durations(min_duration=min_duration, max_duration=max_duration))
+    return (start, start + timedelta(minutes=duration))
 
 
 def total_duration(talks: list[Talk]) -> timedelta:
@@ -79,10 +91,9 @@ def schedule_assert_fail(talks: list[Talk]):
         sm.solve()
 
 
-@given(st.lists(durations(), min_size=1), durations())
-def test_simple(durations, minutes_after):
-    allowed_times = (ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))
-
+@given(st.lists(durations(), min_size=1), durations(), time_ranges())
+def test_simple(durations, minutes_after, allowed_times):
+    """Test scheduling of talks in a single venue"""
     talk_defs = [
         Talk(
             id=i,
@@ -106,10 +117,8 @@ def test_simple(durations, minutes_after):
     assert solved == solved_second
 
 
-@given(st.lists(durations(), min_size=1), durations())
-def test_too_many_talks(durations, minutes_after):
-    allowed_times = (ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))
-
+@given(st.lists(durations(), min_size=1), durations(), time_ranges())
+def test_too_many_talks(durations, minutes_after, allowed_times):
     talk_defs = [
         Talk(
             id=i,
@@ -128,14 +137,19 @@ def test_too_many_talks(durations, minutes_after):
     schedule_assert_fail(talk_defs)
 
 
-def test_invalid_allowed_times():
+@given(durations(), durations(), st.lists(time_ranges(), min_size=1, max_size=5))
+def test_invalid_allowed_times(duration, minutes_after, allowed_times):
     """Talk with a duration longer than any of its allowed_times slots"""
-    allowed_times = [
-        (ts("2016-08-06 13:00"), ts("2016-08-06 14:00")),
-        (ts("2016-08-06 16:00"), ts("2016-08-06 17:00")),
-    ]
+    assume(all((r[1] - r[0]) < timedelta(minutes=duration) for r in allowed_times))
     talk_defs = [
-        Talk(id=1, duration=70, allowed_venues={101}, speakers={1}, allowed_times=allowed_times),
+        Talk(
+            id=1,
+            duration=duration,
+            allowed_venues={101},
+            speakers={1},
+            allowed_times=allowed_times,
+            minutes_after=minutes_after,
+        ),
     ]
 
     schedule_assert_fail(talk_defs)
