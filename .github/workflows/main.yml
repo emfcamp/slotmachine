@@ -28,4 +28,4 @@ jobs:
           uv sync --locked --all-extras --dev
       - name: Run tests
         run: |
-          make test
+          make full-test

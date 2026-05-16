@@ -53,3 +53,7 @@ ignore = [
 
     "RET504", # unnecessary-assign: nice e.g. when constructing then returning big dicts
 ]
+
+[tool.pytest]
+markers = ["slow: slow tests"]
+addopts = ["-m", 'not slow']

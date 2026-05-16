@@ -2,38 +2,9 @@ import argparse
 import json
 import logging
 import sys
-from datetime import datetime
-
-from dateutil.parser import parse as parse_datetime
 
 from slotmachine import SlotMachine
-from slotmachine.data import SchedulingProblem, Talk
-
-
-def parse_time_range(range: dict) -> tuple[datetime, datetime]:
-    return (parse_datetime(range["start"]), parse_datetime(range["end"]))
-
-
-def talk_from_json(talk: dict) -> Talk:
-    return Talk(
-        id=talk["id"],
-        duration=talk["duration"],
-        speakers=set(talk["speakers"]),
-        allowed_venues=set(talk["valid_venues"]),
-        preferred_venues=set(talk.get("preferred_venues", [])),
-        allowed_times=[parse_time_range(r) for r in talk["time_ranges"]],
-        preferred_times=[parse_time_range(r) for r in talk.get("preferred_times", [])],
-        minutes_after=10,
-        start_time=parse_datetime(talk.get("time", "")) if talk.get("time") else None,
-        venue=talk.get("venue"),
-    )
-
-
-def problem_from_json(schedule: dict) -> SchedulingProblem:
-    talks = []
-    for talk_data in schedule:
-        talks.append(talk_from_json(talk_data))
-    return SchedulingProblem(talks=talks, slot_duration=10)
+from slotmachine.data import SchedulingProblem
 
 
 def main():
@@ -46,7 +17,7 @@ def main():
     args = ap.parse_args()
 
     with open(args.infile) as f:
-        problem = problem_from_json(json.load(f))
+        problem = SchedulingProblem.from_dict(json.load(f))
 
     result = SlotMachine(problem).solve(debug=args.debug)
 

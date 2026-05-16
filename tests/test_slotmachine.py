@@ -47,11 +47,18 @@ def time_overlaps(range1: TimeRange, range2: TimeRange) -> bool:
 
 def schedule_assert_solvable(talks: list[Talk]) -> SchedulingSolution:
     """Run the scheduler on a list of talks, asserting that it's solveable and the result looks valid."""
-    sm = SlotMachine(SchedulingProblem(talks=talks, slot_duration=SLOT_DURATION))
+    problem = SchedulingProblem(talks=talks, slot_duration=SLOT_DURATION)
+    sm = SlotMachine(problem)
     solution = sm.solve()
 
+    assert_solution_looks_reasonable(problem, solution)
+
+    return solution
+
+
+def assert_solution_looks_reasonable(problem: SchedulingProblem, solution: SchedulingSolution) -> None:
     # All talks must be represented
-    assert set(talk.id for talk in talks) == set(talk.id for talk in solution.talks)
+    assert set(talk.id for talk in problem.talks) == set(talk.id for talk in solution.talks)
 
     # All time/venue tuples must be different
     slot_venues = [(talk.venue, talk.start_time) for talk in solution.talks]
@@ -80,8 +87,6 @@ def schedule_assert_solvable(talks: list[Talk]) -> SchedulingSolution:
                 (a.start_time, a.end_time),
                 (b.start_time, b.end_time),
             )
-
-    return solution
 
 
 def schedule_assert_fail(talks: list[Talk]):

@@ -4,11 +4,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from itertools import chain
 
+from dateutil.parser import parse as parse_datetime
+
 type TalkID = int
 type VenueID = int
 type SpeakerID = int
 
 type TimeRange = tuple[datetime, datetime]
+
+
+def parse_time_range(range: dict) -> tuple[datetime, datetime]:
+    return (parse_datetime(range["start"]), parse_datetime(range["end"]))
 
 
 @dataclass
@@ -67,6 +73,21 @@ class Talk:
             "venue": self.venue,
         }
 
+    @classmethod
+    def from_dict(cls, talk: dict) -> "Talk":
+        return Talk(
+            id=talk["id"],
+            duration=talk["duration"],
+            speakers=set(talk["speakers"]),
+            allowed_venues=set(talk["valid_venues"]),
+            preferred_venues=set(talk.get("preferred_venues", [])),
+            allowed_times=[parse_time_range(r) for r in talk["time_ranges"]],
+            preferred_times=[parse_time_range(r) for r in talk.get("preferred_times", [])],
+            minutes_after=10,
+            start_time=parse_datetime(talk.get("time", "")) if talk.get("time") else None,
+            venue=talk.get("venue"),
+        )
+
 
 @dataclass()
 class SchedulingProblem:
@@ -100,6 +121,13 @@ class SchedulingProblem:
                 raise ValueError(
                     f"Talk {talk.id} minutes_after {talk.minutes_after} is not a multiple of slot duration {self.slot_duration}"
                 )
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "SchedulingProblem":
+        talks = []
+        for talk_data in data:
+            talks.append(Talk.from_dict(talk_data))
+        return SchedulingProblem(talks=talks, slot_duration=10)
 
 
 @dataclass
