@@ -1,16 +1,58 @@
-# Slot Machine
-![Tests](https://github.com/emfcamp/slotmachine/workflows/Tests/badge.svg?event=push)
+# SlotMachine
 
 A conference schedule optimizer using mixed integer linear programming.
-This is used to generate the schedule for [Electromagnetic Field](https://www.emfcamp.org) events.
 
-## Requirements
+SlotMachine is used to generate the schedule for [Electromagnetic Field](https://www.emfcamp.org) events. Uses the [OR-Tools](https://github.com/google/or-tools) library and solver.
 
-This uses [OR-Tools](https://github.com/google/or-tools), which should be automatically installed from pypy.
+## How to use
+
+Create a `SchedulingProblem` out of a list of `Talk`s:
+
+```python
+from slotmachine import Talk, SchedulingProblem
+
+talks = [
+    Talk(
+        # Talk ID for identifying talks in the result
+        id=1,
+        # Speaker IDs - the system will avoid scheduling two talks from the same speaker at the same time.
+        speakers={1, 2},
+        # Venue IDs
+        allowed_venues={1},
+        # Duration of the talk in minutes
+        duration=30,
+        # Time ranges when the talk is allowed to be scheduled
+        allowed_times=[
+            (datetime(2026, 5, 16, 12, 0, 0), datetime(2026, 5, 16, 19, 0, 0))
+        ]
+    ),
+    ...
+]
+
+problem = SchedulingProblem(
+    talks=talks,
+    # The size of a "slot" - this is the granularity the scheduler will operate at.
+    # All durations and allowed times must be multiples of this number.
+    slot_duration=10
+)
+```
+
+There are other options to the `Talk` class which are documented [in the code](src/slotmachine/data.py). Now you can run the solver:
+
+```python
+from slotmachine import SlotMachine
+
+slotmachine = SlotMachine(problem)
+result = slotmachine.solve()
+```
+
+`result.talks` will be a list of talks with the `start_time` and `venue` fields set.
+
+If you need to update your schedule, you can pass the existing `start_time` and `venue` values back in, and the solver will try and minimise changes.
 
 ## Acknowledgements
 
-The concept and code for the original [CBC](https://projects.coin-or.org/Cbc)-based version of this library is from [David MacIver](http://www.drmaciver.com/). 
+The concept and code for the original [CBC](https://projects.coin-or.org/Cbc)-based version of this library is from [David MacIver](http://www.drmaciver.com/).
 
 For more information on this approach, see David's talk [Easy solutions to hard
 problems](https://www.youtube.com/watch?v=OkusHEBOhmQ) from PyCon UK 2016.
