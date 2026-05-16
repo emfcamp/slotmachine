@@ -208,7 +208,7 @@ class SlotMachine:
             self.model.maximize(cp_model.LinearExpr.weighted_sum(obj_vars, obj_scores))
 
     def solve(self, debug: bool = False) -> SchedulingSolution:
-        t0 = time.time()
+        t0 = time.monotonic()
 
         self.log.info("Generating schedule problem...")
 
@@ -219,10 +219,10 @@ class SlotMachine:
         self.log.info(
             "Problem generated (%s variables) in %.3f seconds, attempting to solve...",
             len(self.model.proto.variables),
-            time.time() - t0,
+            time.monotonic() - t0,
         )
 
-        solve_start = time.time()
+        solve_start = time.monotonic()
         self._solver = cp_model.CpSolver()
         self._solver.parameters.num_search_workers = 8
         self._solver.parameters.max_time_in_seconds = 30.0
@@ -242,7 +242,7 @@ class SlotMachine:
                     "Solution %d found: objective=%.0f, elapsed=%.2fs",
                     self._count,
                     self.objective_value,
-                    time.time() - solve_start,
+                    time.monotonic() - solve_start,
                 )
 
         callback = SolverCallback()
@@ -255,8 +255,8 @@ class SlotMachine:
             "Problem solved (%s, %d solutions) in %.2f seconds. Total runtime %.2f seconds.",
             self._solver.status_name(status),
             callback._count,
-            time.time() - solve_start,
-            time.time() - t0,
+            time.monotonic() - solve_start,
+            time.monotonic() - t0,
         )
 
         for talk in talks:
