@@ -1,5 +1,6 @@
 """Internal data model which represents time in terms of slots."""
 
+import dataclasses
 from datetime import datetime
 
 from dateutil import relativedelta
@@ -81,7 +82,8 @@ class SlottedTalk:
     def to_talk(self, problem: SchedulingProblem) -> Talk:
         if self.start is None:
             raise ValueError("Attempting to convert talk without start slot")
-        talk = self.talk
-        talk.start_time = calc_time(problem.start_time, self.start, problem.slot_duration)
-        talk.venue = self.venue
-        return talk
+        return dataclasses.replace(
+            self.talk,
+            start_time=calc_time(problem.start_time, self.start, problem.slot_duration),
+            venue=self.venue,
+        )
