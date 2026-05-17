@@ -35,8 +35,8 @@ class Talk:
     #: Time ranges the talk is allowed to be scheduled in.
     allowed_times: list[TimeRange]
 
-    #: Preferred venues: can be used to assign more popular talks to larger venues.
-    preferred_venues: set[VenueID] = field(default_factory=set)
+    #: Preferred venues: a list of preferred venues in descending order of priority.
+    preferred_venues: list[VenueID] = field(default_factory=list)
     preferred_times: list[TimeRange] = field(default_factory=list)
 
     #: Number of minutes allowed after the talk for changeover
@@ -98,7 +98,7 @@ class Talk:
             duration=talk["duration"],
             speakers=set(talk["speakers"]),
             allowed_venues=set(talk["valid_venues"]),
-            preferred_venues=set(talk.get("preferred_venues", [])),
+            preferred_venues=talk.get("preferred_venues", []),
             allowed_times=[parse_time_range(r) for r in talk["time_ranges"]],
             preferred_times=[parse_time_range(r) for r in talk.get("preferred_times", [])],
             minutes_after=10,

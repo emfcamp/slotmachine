@@ -333,16 +333,18 @@ def test_talk_clash():
             assert talk.venue == 102
 
 
-def test_preferred_venues():
+@given(st.sets(st.integers(min_value=101)))
+def test_preferred_venues(venues):
+    """No conflicting constraints, all talks should be scheduled in their preferred venues."""
     allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 19:00"))]
-    venues = {101, 102, 103}
+    venues |= {102, 103}
 
     talks = [
         Talk(
             id=1,
             duration=60,
             allowed_venues=venues,
-            preferred_venues={102},
+            preferred_venues=[102],
             speakers={1},
             allowed_times=allowed_times,
         ),
@@ -350,7 +352,7 @@ def test_preferred_venues():
             id=2,
             duration=60,
             allowed_venues=venues,
-            preferred_venues={103},
+            preferred_venues=[103],
             speakers={2},
             allowed_times=allowed_times,
         ),
@@ -358,7 +360,7 @@ def test_preferred_venues():
             id=3,
             duration=60,
             allowed_venues=venues,
-            preferred_venues={103},
+            preferred_venues=[103],
             speakers={3},
             allowed_times=allowed_times,
         ),
@@ -372,3 +374,50 @@ def test_preferred_venues():
                 assert talk.venue == 102
             case 2 | 3:
                 assert talk.venue == 103
+
+
+@given(st.sets(st.integers(min_value=101)))
+def test_weighted_preferred_venues(venues):
+    """Constrained by time and existing schedules, talk 2 should be scheduled in its second-preference venue."""
+    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 14:00"))]
+    venues |= {101, 102, 103, 104}
+
+    talks = [
+        Talk(
+            id=1,
+            duration=60,
+            allowed_venues=venues,
+            preferred_venues=[101, 102],
+            speakers={1},
+            allowed_times=allowed_times,
+            start_time=ts("2016-08-06 13:00"),
+            venue=101,
+        ),
+        Talk(
+            id=2,
+            duration=60,
+            allowed_venues=venues,
+            preferred_venues=[101, 103, 104],
+            speakers={2},
+            allowed_times=allowed_times,
+        ),
+        Talk(
+            id=3,
+            duration=60,
+            allowed_venues=venues,
+            preferred_venues=[102, 101],
+            speakers={3},
+            allowed_times=allowed_times,
+            start_time=ts("2016-08-06 13:00"),
+            venue=102,
+        ),
+    ]
+    solved = schedule_assert_solvable(talks)
+    for talk in solved.talks:
+        match talk.id:
+            case 1:
+                assert talk.venue == 101
+            case 2:
+                assert talk.venue == 103
+            case 3:
+                assert talk.venue == 102

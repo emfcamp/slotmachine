@@ -48,7 +48,7 @@ class SlottedTalk:
     speakers: set[SpeakerID]
 
     allowed_venues: set[VenueID]
-    preferred_venues: set[VenueID]
+    preferred_venues: list[VenueID]
 
     allowed_intervals: list[SlotInterval]
     preferred_intervals: list[SlotInterval]
