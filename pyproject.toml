@@ -6,7 +6,10 @@ readme = "README.md"
 authors = [{ name = "Electromagnetic Field" }]
 requires-python = ">=3.13"
 classifiers = ["Private :: Do Not Upload"]
-dependencies = ['ortools>=9.0', 'python-dateutil>=2.5.3']
+dependencies = [
+    'ortools>=9.0',
+    'python-dateutil>=2.5.3',
+]
 
 [project.scripts]
 slotmachine = "slotmachine.__main__:main"
@@ -20,6 +23,7 @@ dev = [
     "hypothesis>=6.152.7",
     "mypy>=1.17.1",
     "pytest>=8.4.1",
+    "pytest-benchmark>=5.2.3",
     "pytest-github-actions-annotate-failures>=0.3.0",
     "ruff>=0.12.10",
     "types-python-dateutil>=2.9.0.20250822",
