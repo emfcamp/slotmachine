@@ -1,8 +1,11 @@
 # SlotMachine
 
-A conference schedule optimizer using mixed integer linear programming.
+A conference schedule optimizer using mixed integer linear programming, using the [OR-Tools](https://github.com/google/or-tools) library and solver.
 
-SlotMachine is used to generate the schedule for [Electromagnetic Field](https://www.emfcamp.org) events. Uses the [OR-Tools](https://github.com/google/or-tools) library and solver.
+SlotMachine generates an optimal schedule for a multi-venue event, solving thousands of constraints on speaker availability and venue requirements in seconds.
+It can also take an existing schedule and calculate the minimum number of changes required to accommodate a change in constraints.
+
+SlotMachine is used to generate the schedule for [Electromagnetic Field](https://www.emfcamp.org) events.
 
 ## How to use
 
@@ -48,7 +51,10 @@ result = slotmachine.solve()
 
 `result.talks` will be a list of talks with the `start_time` and `venue` fields set.
 
-If you need to update your schedule, you can pass the existing `start_time` and `venue` values back in, and the solver will try and minimise changes.
+### Updating a schedule
+
+If you need to update your schedule, you can pass a list of `Talks` with their existing `start_time` and `venue` values set.
+The solver will minimise the number of schedule changes required to accommodate the changes in constraints.
 
 ### Venue/speaker availability
 
