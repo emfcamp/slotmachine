@@ -331,3 +331,44 @@ def test_talk_clash():
     for talk in solved.talks:
         if talk.id in (2, 3):
             assert talk.venue == 102
+
+
+def test_preferred_venues():
+    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 19:00"))]
+    venues = {101, 102, 103}
+
+    talks = [
+        Talk(
+            id=1,
+            duration=60,
+            allowed_venues=venues,
+            preferred_venues={102},
+            speakers={1},
+            allowed_times=allowed_times,
+        ),
+        Talk(
+            id=2,
+            duration=60,
+            allowed_venues=venues,
+            preferred_venues={103},
+            speakers={2},
+            allowed_times=allowed_times,
+        ),
+        Talk(
+            id=3,
+            duration=60,
+            allowed_venues=venues,
+            preferred_venues={103},
+            speakers={3},
+            allowed_times=allowed_times,
+        ),
+    ]
+
+    solved = schedule_assert_solvable(talks)
+
+    for talk in solved.talks:
+        match talk.id:
+            case 1:
+                assert talk.venue == 102
+            case 2 | 3:
+                assert talk.venue == 103
