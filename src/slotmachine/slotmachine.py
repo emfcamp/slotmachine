@@ -122,15 +122,16 @@ class SlotMachine:
         # the previous schedule needed to satisfy the current constraints.
 
         obj_vars: list[cp_model.LinearExprT] = []
-        obj_scores: list[int] = []
+        obj_scores: list[float] = []
 
         # Maximise the number of things in their preferred venues (for putting
         # big talks on big stages)
         for talk in talks:
-            for venue in talk.preferred_venues:
+            for i, venue in enumerate(talk.preferred_venues):
                 if (talk.id, venue) in self.talk_venue_active_vars:
+                    weight = 5 / (i + 1)
                     obj_vars.append(self.talk_venue_active_vars[(talk.id, venue)])
-                    obj_scores.append(5 * talk.duration)
+                    obj_scores.append(weight * talk.duration)
 
         # Maximise the number of things in their preferred slots. This is
         # frustratingly ugly because while or-tools provides clean interfaces
