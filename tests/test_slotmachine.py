@@ -372,3 +372,47 @@ def test_preferred_venues():
                 assert talk.venue == 102
             case 2 | 3:
                 assert talk.venue == 103
+
+
+def test_large_1():
+    # A larger (but still straightforward) test set:
+    # 4 days, 3 venues. All unique speakers and all talks allowed in all venues.
+    allowed_times = [
+        (ts("2016-08-05 10:00"), ts("2016-08-05 19:00")),
+        (ts("2016-08-06 10:00"), ts("2016-08-06 19:00")),
+        (ts("2016-08-07 10:00"), ts("2016-08-07 19:00")),
+        (ts("2016-08-08 10:00"), ts("2016-08-08 19:00")),
+    ]
+    venues = {101, 102, 103}
+    available_time = sum((day[1] - day[0]).total_seconds() for day in allowed_times) * len(venues)
+    talk_length = 40
+    num_talks = int(available_time / 60 / (talk_length + SLOT_DURATION))
+
+    talks = []
+    for i in range(0, num_talks):
+        talks.append(
+            Talk(id=i, duration=talk_length, allowed_venues=venues, speakers={i}, allowed_times=allowed_times)
+        )
+
+    schedule_assert_solvable(talks)
+
+    # The EMF 2022 issue: we scheduled the opening session, and added two fake talks to prevent
+    # anything being scheduled in the other venues while that was happening. Unfortunately
+    # those talks had the same speaker ID and were constrained for their allowed_times,
+    # so the schedule was unsolvable.
+
+    # Remove 3 talks to replace them
+    talks = talks[:-3]
+
+    for venue in venues:
+        talks.append(
+            Talk(
+                id=num_talks + venue,
+                duration=talk_length,
+                allowed_venues={venue},
+                speakers={1000},
+                allowed_times=[(ts("2016-08-05 10:00"), ts("2016-08-05 11:00"))],
+            )
+        )
+
+    schedule_assert_fail(talks)
