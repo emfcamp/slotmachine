@@ -50,6 +50,13 @@ result = slotmachine.solve()
 
 If you need to update your schedule, you can pass the existing `start_time` and `venue` values back in, and the solver will try and minimise changes.
 
+### Venue/speaker availability
+
+This library intentionally does not deal with venue or speaker availability, as this can be quite complex and event-specific.
+This can be handled outside slotmachine by setting `allowed_times` to the intersection of the speaker and venue availability.
+
+Per-venue allowed time ranges are [coming soon](https://github.com/emfcamp/slotmachine/issues/14).
+
 ## Acknowledgements
 
 The concept and code for the original [CBC](https://projects.coin-or.org/Cbc)-based version of this library is from [David MacIver](http://www.drmaciver.com/).
