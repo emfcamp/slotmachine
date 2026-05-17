@@ -1,6 +1,6 @@
 # SlotMachine
 
-A conference schedule optimizer using mixed integer linear programming, using the [OR-Tools](https://github.com/google/or-tools) library and solver.
+An automatic conference schedule optimiser, built on the [OR-Tools](https://github.com/google/or-tools) linear programming library and solver.
 
 SlotMachine generates an optimal schedule for a multi-venue event, solving thousands of constraints on speaker availability and venue requirements in seconds.
 It can also take an existing schedule and calculate the minimum number of changes required to accommodate a change in constraints.
@@ -34,7 +34,7 @@ talks = [
 
 problem = SchedulingProblem(
     talks=talks,
-    # The size of a "slot" - this is the granularity the scheduler will operate at.
+    # The length of a "slot" in minutes - this is the granularity the scheduler will operate at.
     # All durations and allowed times must be multiples of this number.
     slot_duration=10
 )
@@ -58,16 +58,13 @@ The solver will minimise the number of schedule changes required to accommodate 
 
 ### Venue/speaker availability
 
-This library intentionally does not deal with venue or speaker availability, as this can be quite complex and event-specific.
-This can be handled outside slotmachine by setting `allowed_times` to the intersection of the speaker and venue availability.
+This library does not deal directly with venue or speaker availability, as this can be quite complex and event-specific.
+It can be handled outside SlotMachine by setting `Talk.allowed_times` to the intersection of the speaker and venue availability.
 
-Per-venue allowed time ranges are [coming soon](https://github.com/emfcamp/slotmachine/issues/14).
+Per-venue time ranges are [coming soon](https://github.com/emfcamp/slotmachine/issues/14).
 
 ## Acknowledgements
 
-The concept and code for the original [CBC](https://projects.coin-or.org/Cbc)-based version of this library is from [David MacIver](http://www.drmaciver.com/).
-
-For more information on this approach, see David's talk [Easy solutions to hard
-problems](https://www.youtube.com/watch?v=OkusHEBOhmQ) from PyCon UK 2016.
-
-A similar library with a slightly different approach is [conference-scheduler](http://conference-scheduler.readthedocs.io/en/latest/).
+- The concept and code for the original version of this library was from [David MacIver](http://www.drmaciver.com/).
+- For more information on this approach, see David's talk [Easy solutions to hard problems](https://www.youtube.com/watch?v=OkusHEBOhmQ) from PyCon UK 2016.
+- A similar library with a slightly different approach is [conference-scheduler](http://conference-scheduler.readthedocs.io/en/latest/).

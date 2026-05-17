@@ -114,9 +114,14 @@ class SchedulingProblem:
     This is an immutable object.
     """
 
+    #: The list of Talk objects to be scheduled.
     talks: list[Talk]
+
+    #: The duration of a "slot" in minutes: this is the minimum granularity of the scheduler.
+    #: All durations and timestamp properties of talks must be a multiple of this, or an exception will be thrown.
     slot_duration: int
 
+    ## Calculated fields
     start_time: datetime
     venues: set[VenueID]
 
