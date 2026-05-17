@@ -92,8 +92,10 @@ def assert_solution_looks_reasonable(problem: SchedulingProblem, solution: Sched
 def schedule_assert_fail(talks: list[Talk]) -> None:
     sm = SlotMachine(SchedulingProblem(talks=talks, slot_duration=10))
 
-    with pytest.raises(Unsatisfiable):
+    with pytest.raises(Unsatisfiable) as excinfo:
         sm.solve()
+
+    assert excinfo.value.status == "INFEASIBLE"
 
 
 @given(st.lists(durations(), min_size=1), durations(), time_ranges())
