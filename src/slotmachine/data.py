@@ -146,9 +146,23 @@ class SchedulingProblem:
         return SchedulingProblem(talks=talks, slot_duration=10)
 
 
-@dataclass
+@dataclass(frozen=True)
 class SchedulingSolution:
+    """A solution to a SchedulingProblem"""
+
+    #: A list of talks, with their start_time and venue properties set
     talks: list[Talk]
+
+    ## Detail about the solution
+    #: How long the scheduler took to run
+    timings: dict[str, timedelta]
+    #: The type of solution
+    solution_type: str
+    #: Number of variables in the linear programming model
+    variables: int
+
+    def __eq__(self, other: Any) -> bool:
+        return isinstance(other, SchedulingSolution) and self.talks == other.talks
 
     def to_dict(self) -> list[dict[str, Any]]:
         return [talk.to_dict() for talk in self.talks]

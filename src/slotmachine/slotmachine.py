@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import timedelta
 
 from ortools.sat.python import cp_model
 
@@ -247,6 +248,7 @@ class SlotMachine:
 
         callback = SolverCallback()
         status = self._solver.solve(self.model, callback)
+        time_complete = time.monotonic()
 
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             raise Unsatisfiable()
@@ -255,8 +257,8 @@ class SlotMachine:
             "Problem solved (%s, %d solutions) in %.2f seconds. Total runtime %.2f seconds.",
             self._solver.status_name(status),
             callback._count,
-            time.monotonic() - solve_start,
-            time.monotonic() - t0,
+            time_complete - solve_start,
+            time_complete - t0,
         )
 
         for talk in talks:
@@ -273,4 +275,12 @@ class SlotMachine:
                     talk.venue = venue
                     break
 
-        return SchedulingSolution(talks=[talk.to_talk(self.problem) for talk in talks])
+        return SchedulingSolution(
+            talks=[talk.to_talk(self.problem) for talk in talks],
+            timings={
+                "total": timedelta(seconds=time_complete - t0),
+                "solve": timedelta(seconds=time_complete - solve_start),
+            },
+            solution_type=self._solver.status_name(status),
+            variables=len(self.model.proto.variables),
+        )
