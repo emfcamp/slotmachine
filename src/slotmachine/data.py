@@ -132,7 +132,14 @@ class SchedulingProblem:
         self.talks = talks
         self.slot_duration = slot_duration
 
-        self.start_time = min(range[0] for talk in self.talks for range in talk.allowed_times)
+        # The start_time is the epoch that the solver uses, so it must be the earliest time present
+        # in any part of the scheduling problem, or negative slot numbers will cause issues.
+        self.start_time = min(
+            [range[0] for talk in self.talks for range in talk.allowed_times]
+            + [range[0] for talk in self.talks for range in talk.preferred_times]
+            + [talk.start_time for talk in self.talks if talk.start_time is not None]
+        )
+
         self.venues = set(chain.from_iterable(talk.allowed_venues for talk in self.talks))
 
         for talk in self.talks:

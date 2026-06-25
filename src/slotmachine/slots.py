@@ -24,6 +24,8 @@ def calculate_slots(
     spacing_slots: int = 1,
 ) -> SlotInterval:
     slot_start = calc_slot(event_start, range_start, slot_duration)
+    if slot_start < 0:
+        raise ValueError("Invalid slot: range_start is before event_start")
     # We add the number of slots that must be between events to the end to
     # allow events to finish in the last period of the schedule
     return (

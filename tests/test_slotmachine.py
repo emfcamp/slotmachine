@@ -418,3 +418,20 @@ def test_large_1():
         )
 
     schedule_assert_fail(talks)
+
+
+def test_invalid_allowed_time():
+    # start_time is before the earliest allowed_time - don't generate a negative slot number
+    talks = [
+        Talk(
+            id=1,
+            duration=30,
+            allowed_venues={1},
+            speakers={1},
+            allowed_times=[(ts("2016-08-05 10:00"), ts("2016-08-05 19:00"))],
+            start_time=ts("2016-08-04 10:00"),
+            venue=1,
+        )
+    ]
+
+    schedule_assert_solvable(talks)
