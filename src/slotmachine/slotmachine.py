@@ -214,7 +214,7 @@ class SlotMachine:
             # move them anywhere as it is a major schedule change.
             max_displacement = 6 * 2  # Two hours
             abs_diff_var = self.model.new_int_var(
-                0, max(talk_slot_max[talk.id], talk.start), f"talk_slot_abs_diff_{talk.id}_{talk.start}"
+                0, talk_slot_max[talk.id] + abs(talk.start), f"talk_slot_abs_diff_{talk.id}_{talk.start}"
             )
             self.model.add_max_equality(abs_diff_var, [start - talk.start, talk.start - start])
             diff_var = self.model.new_int_var(0, max_displacement, f"talk_slot_diff_{talk.id}_{talk.start}")
