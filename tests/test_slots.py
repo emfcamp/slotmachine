@@ -4,6 +4,30 @@ from slotmachine.data import SchedulingProblem, Talk, VenueTimes
 from slotmachine.slots import SlottedTalk, calculate_slots
 
 
+def test_talk_can_span_adjacent_slot_ranges():
+    # This talk is longer than either of the two time ranges passed, but
+    # they're adjacent so it should be able to span them because they're
+    # internally made contiguous once converted to slots
+    talk = Talk(
+        id=1,
+        venue_times=[
+            VenueTimes(
+                venue=101,
+                times=[
+                    (ts("2016-08-05 10:00"), ts("2016-08-05 12:00")),
+                    (ts("2016-08-05 12:00"), ts("2016-08-05 14:00")),
+                ],
+            )
+        ],
+        duration=240,
+        speakers={1},
+    )
+    problem = SchedulingProblem(talks=[talk], slot_duration=10)
+
+    t = SlottedTalk(talk, problem)
+    assert t.venue_intervals[0].intervals == [(0, 24)]
+
+
 def test_calculate_slots():
     event_start = ts("2016-08-05 13:00")
     slots_minimal = calculate_slots(event_start, ts("2016-08-05 13:00"), ts("2016-08-05 14:00"), 10)
