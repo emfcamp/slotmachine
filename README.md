@@ -12,7 +12,7 @@ SlotMachine is used to generate the schedule for [Electromagnetic Field](https:/
 Create a `SchedulingProblem` out of a list of `Talk`s:
 
 ```python
-from slotmachine import Talk, SchedulingProblem
+from slotmachine import Talk, VenueTimes, SchedulingProblem
 
 talks = [
     Talk(
@@ -20,14 +20,23 @@ talks = [
         id=1,
         # Speaker IDs - the system will avoid scheduling two talks from the same speaker at the same time.
         speakers={1, 2},
-        # Venue IDs
-        allowed_venues={1},
         # Duration of the talk in minutes
         duration=30,
-        # Time ranges when the talk is allowed to be scheduled
-        allowed_times=[
-            (datetime(2026, 5, 16, 12, 0, 0), datetime(2026, 5, 16, 19, 0, 0))
-        ]
+        # The venues the talk may be scheduled in, each with its own allowed time ranges.
+        venue_times=[
+            VenueTimes(
+                venue=1,
+                times=[
+                    (datetime(2026, 5, 16, 12, 0, 0), datetime(2026, 5, 16, 19, 0, 0)),
+                ],
+            ),
+            VenueTimes(
+                venue=2,
+                times=[
+                    (datetime(2026, 5, 16, 14, 0, 0), datetime(2026, 5, 16, 19, 0, 0)),
+                ],
+            ),
+        ],
     ),
     ...
 ]
@@ -59,9 +68,7 @@ The solver will minimise the number of schedule changes required to accommodate 
 ### Venue/speaker availability
 
 This library does not deal directly with venue or speaker availability, as this can be quite complex and event-specific.
-It can be handled outside SlotMachine by setting `Talk.allowed_times` to the intersection of the speaker and venue availability.
-
-Per-venue time ranges are [coming soon](https://github.com/emfcamp/slotmachine/issues/14).
+It can be handled outside SlotMachine by setting each `VenueTimes.times` to the intersection of the speaker and venue availability for that venue.
 
 ## Acknowledgements
 

@@ -7,9 +7,14 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from slotmachine import SlotMachine, Talk, Unsatisfiable
-from slotmachine.data import SchedulingProblem, SchedulingSolution, TimeRange
+from slotmachine.data import SchedulingProblem, SchedulingSolution, TimeRange, VenueTimes
 
 SLOT_DURATION = 10
+
+
+def allowed(venues: set[int], times: list[TimeRange]) -> list[VenueTimes]:
+    """Build venue_times for a talk allowed in every venue in `venues` during the same `times`."""
+    return [VenueTimes(venue=v, times=list(times)) for v in sorted(venues)]
 
 
 @st.composite
@@ -66,17 +71,20 @@ def assert_solution_looks_reasonable(problem: SchedulingProblem, solution: Sched
 
     for talk in solution.talks:
         # Venue must be allowed
-        assert talk.venue in talk.allowed_venues
+        assert talk.venue in {vt.venue for vt in talk.venue_times}
 
-        # Talk must be assigned a start time
+        # The time ranges allowed in the venue the talk was actually assigned to
+        allowed_times = next(vt.times for vt in talk.venue_times if vt.venue == talk.venue)
+
+        # Talk must be assigned a start time within a time range allowed in its venue
         assert talk.start_time
-        assert any(start <= talk.start_time < end for (start, end) in talk.allowed_times)
+        assert any(start <= talk.start_time < end for (start, end) in allowed_times)
 
         # End time should be calculated correctly
         assert talk.end_time
         assert talk.end_time > talk.start_time
-        # Talk should end in allowed times
-        assert any(start < talk.end_time <= end for (start, end) in talk.allowed_times)
+        # Talk should end within a time range allowed in its venue
+        assert any(start < talk.end_time <= end for (start, end) in allowed_times)
 
     # Talks must not overlap
     for a, b in permutations(solution.talks, 2):
@@ -105,9 +113,8 @@ def test_simple(durations, minutes_after, allowed_times):
         Talk(
             id=i,
             duration=durations[i],
-            allowed_venues={101},
             speakers={1},
-            allowed_times=[allowed_times],
+            venue_times=allowed({101}, [allowed_times]),
             minutes_after=minutes_after,
         )
         for i in range(0, len(durations))
@@ -130,9 +137,8 @@ def test_too_many_talks(durations, minutes_after, allowed_times):
         Talk(
             id=i,
             duration=durations[i],
-            allowed_venues={101},
             speakers={1},
-            allowed_times=[allowed_times],
+            venue_times=allowed({101}, [allowed_times]),
             minutes_after=minutes_after,
         )
         for i in range(0, len(durations))
@@ -151,9 +157,8 @@ def test_invalid_allowed_times(duration, minutes_after, allowed_times):
     talk = Talk(
         id=1,
         duration=duration,
-        allowed_venues={101},
         speakers={1},
-        allowed_times=allowed_times,
+        venue_times=allowed({101}, allowed_times),
         minutes_after=minutes_after,
     )
 
@@ -165,9 +170,9 @@ def test_two_venues():
     # talk 3 should end up in venue 102
     allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 14:00"))]
     talk_defs = [
-        Talk(id=1, duration=50, allowed_venues={101}, speakers={1}, allowed_times=allowed_times),
-        Talk(id=2, duration=20, allowed_venues={102}, speakers={2}, allowed_times=allowed_times),
-        Talk(id=3, duration=20, allowed_venues={101, 102}, speakers={3}, allowed_times=allowed_times),
+        Talk(id=1, duration=50, venue_times=allowed({101}, allowed_times), speakers={1}),
+        Talk(id=2, duration=20, venue_times=allowed({102}, allowed_times), speakers={2}),
+        Talk(id=3, duration=20, venue_times=allowed({101, 102}, allowed_times), speakers={3}),
     ]
 
     solved = schedule_assert_solvable(talk_defs)
@@ -177,14 +182,35 @@ def test_two_venues():
             assert talk.venue == 102
 
 
+def test_per_venue_times():
+    # The interval in 101 is too small for this talk, so it must be scheduled in 102
+    talk_defs = [
+        Talk(
+            id=1,
+            duration=50,
+            speakers={1},
+            venue_times=[
+                VenueTimes(venue=101, times=[(ts("2016-08-06 13:00"), ts("2016-08-06 13:30"))]),
+                VenueTimes(venue=102, times=[(ts("2016-08-06 15:00"), ts("2016-08-06 16:00"))]),
+            ],
+        ),
+    ]
+
+    solved = schedule_assert_solvable(talk_defs)
+
+    (talk,) = solved.talks
+    assert talk.venue == 102
+    assert talk.start_time and talk.start_time >= ts("2016-08-06 15:00")
+
+
 def test_venue_too_full():
     # Talks 1 and 3 won't fit into 101 together, and 3 and 4 won't fit in 102 together
     allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 15:00"))]
     talk_defs = [
-        Talk(id=1, duration=70, allowed_venues={101}, speakers={1}, allowed_times=allowed_times),
-        Talk(id=2, duration=40, allowed_venues={101, 102}, speakers={2}, allowed_times=allowed_times),
-        Talk(id=3, duration=50, allowed_venues={101, 102}, speakers={3}, allowed_times=allowed_times),
-        Talk(id=4, duration=70, allowed_venues={102}, speakers={4}, allowed_times=allowed_times),
+        Talk(id=1, duration=70, venue_times=allowed({101}, allowed_times), speakers={1}),
+        Talk(id=2, duration=40, venue_times=allowed({101, 102}, allowed_times), speakers={2}),
+        Talk(id=3, duration=50, venue_times=allowed({101, 102}, allowed_times), speakers={3}),
+        Talk(id=4, duration=70, venue_times=allowed({102}, allowed_times), speakers={4}),
     ]
 
     schedule_assert_fail(talk_defs)
@@ -197,31 +223,28 @@ def test_venue_clash():
         Talk(
             id=1,
             duration=70,
-            allowed_venues={101},
+            venue_times=allowed({101}, allowed_times),
             speakers={1},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 13:00"),
             venue=101,
         ),
         Talk(
             id=2,
             duration=40,
-            allowed_venues={101, 102},
+            venue_times=allowed({101, 102}, allowed_times),
             speakers={2},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 13:20"),
             venue=102,
         ),
         Talk(
             id=3,
             duration=40,
-            allowed_venues={101, 102},
+            venue_times=allowed({101, 102}, allowed_times),
             speakers={3},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 14:10"),
             venue=102,
         ),
-        Talk(id=4, duration=70, allowed_venues={102}, speakers={4}, allowed_times=allowed_times),
+        Talk(id=4, duration=70, venue_times=allowed({102}, allowed_times), speakers={4}),
     ]
 
     solved = schedule_assert_solvable(talk_defs)
@@ -241,31 +264,28 @@ def test_speaker_clash():
         Talk(
             id=1,
             duration=70,
-            allowed_venues={101},
+            venue_times=allowed({101}, allowed_times),
             speakers={1},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 13:00"),
             venue=101,
         ),
         Talk(
             id=2,
             duration=70,
-            allowed_venues={102},
+            venue_times=allowed({102}, allowed_times),
             speakers={2},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 13:50"),
             venue=102,
         ),
         Talk(
             id=3,
             duration=40,
-            allowed_venues={101, 102},
+            venue_times=allowed({101, 102}, allowed_times),
             speakers={3},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 14:20"),
             venue=101,
         ),
-        Talk(id=4, duration=40, allowed_venues={101, 102}, speakers={1}, allowed_times=allowed_times),
+        Talk(id=4, duration=40, venue_times=allowed({101, 102}, allowed_times), speakers={1}),
     ]
 
     solved = schedule_assert_solvable(talk_defs)
@@ -290,33 +310,29 @@ def test_talk_clash():
         Talk(
             id=1,
             duration=70,
-            allowed_venues={101},
+            venue_times=allowed({101}, allowed_times),
             speakers={1},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 13:00"),
         ),
         Talk(
             id=2,
             duration=50,
-            allowed_venues={101, 102},
+            venue_times=allowed({101, 102}, allowed_times),
             speakers={2},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 13:00"),
         ),
         Talk(
             id=3,
             duration=50,
-            allowed_venues={101, 102},
+            venue_times=allowed({101, 102}, allowed_times),
             speakers={3},
-            allowed_times=allowed_times,
             start_time=ts("2016-08-06 14:20"),
         ),
         Talk(
             id=4,
             duration=20,
-            allowed_venues={101, 102},
+            venue_times=allowed({101, 102}, [(ts("2016-08-06 13:00"), ts("2016-08-06 13:20"))]),
             speakers={4},
-            allowed_times=[(ts("2016-08-06 13:00"), ts("2016-08-06 13:20"))],
             start_time=ts("2016-08-06 15:00"),
         ),
     ]
@@ -343,26 +359,23 @@ def test_preferred_venues():
         Talk(
             id=1,
             duration=60,
-            allowed_venues=venues,
+            venue_times=allowed(venues, allowed_times),
             preferred_venues={102},
             speakers={1},
-            allowed_times=allowed_times,
         ),
         Talk(
             id=2,
             duration=60,
-            allowed_venues=venues,
+            venue_times=allowed(venues, allowed_times),
             preferred_venues={103},
             speakers={2},
-            allowed_times=allowed_times,
         ),
         Talk(
             id=3,
             duration=60,
-            allowed_venues=venues,
+            venue_times=allowed(venues, allowed_times),
             preferred_venues={103},
             speakers={3},
-            allowed_times=allowed_times,
         ),
     ]
 
@@ -393,7 +406,7 @@ def test_large_1():
     talks = []
     for i in range(0, num_talks):
         talks.append(
-            Talk(id=i, duration=talk_length, allowed_venues=venues, speakers={i}, allowed_times=allowed_times)
+            Talk(id=i, duration=talk_length, venue_times=allowed(venues, allowed_times), speakers={i})
         )
 
     schedule_assert_solvable(talks)
@@ -411,9 +424,8 @@ def test_large_1():
             Talk(
                 id=num_talks + venue,
                 duration=talk_length,
-                allowed_venues={venue},
+                venue_times=allowed({venue}, [(ts("2016-08-05 10:00"), ts("2016-08-05 11:00"))]),
                 speakers={1000},
-                allowed_times=[(ts("2016-08-05 10:00"), ts("2016-08-05 11:00"))],
             )
         )
 
@@ -426,9 +438,8 @@ def test_invalid_allowed_time():
         Talk(
             id=1,
             duration=30,
-            allowed_venues={1},
+            venue_times=allowed({1}, [(ts("2016-08-05 10:00"), ts("2016-08-05 19:00"))]),
             speakers={1},
-            allowed_times=[(ts("2016-08-05 10:00"), ts("2016-08-05 19:00"))],
             start_time=ts("2016-08-04 10:00"),
             venue=1,
         )

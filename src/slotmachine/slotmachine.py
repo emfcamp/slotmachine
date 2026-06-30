@@ -5,7 +5,7 @@ from datetime import timedelta
 from ortools.sat.python import cp_model
 
 from .data import SchedulingProblem, SchedulingSolution, SpeakerID, TalkID, VenueID
-from .slots import Slot, SlottedTalk
+from .slots import Slot, SlotInterval, SlottedTalk
 
 
 class Unsatisfiable(Exception):
@@ -40,12 +40,12 @@ class SlotMachine:
         self.model.add_assumption(var)
         return var
 
-    def generate_problem(self, venues: set[VenueID], talks: list[SlottedTalk]) -> None:
+    def generate_problem(self, talks: list[SlottedTalk]) -> None:
         self.model = cp_model.CpModel()
         self.talk_slot_vars = {}
         self.talk_venue_active_vars = {}
 
-        venue_intervals: dict[VenueID, list[cp_model.IntervalVar]] = {v: [] for v in venues}
+        venue_intervals: dict[VenueID, list[cp_model.IntervalVar]] = {}
         talk_intervals: dict[TalkID, cp_model.IntervalVar] = {}
         talk_slot_max: dict[TalkID, Slot] = {}
 
@@ -57,29 +57,34 @@ class SlotMachine:
         # existing schedule, or optimise the schedule in any way.
 
         for talk in talks:
-            # Calculate start slots that a talk can actually be in, filtering
-            # intervals to remove any that are too small
-            allowed_intervals = [
-                [int_start, int_end - talk.duration + 1]
-                for int_start, int_end in talk.allowed_intervals
-                if int_end - int_start + 1 >= talk.duration
-            ]
+            # Build a per-venue map of allowed time intervals, keeping only
+            # intervals large enough to fit the talk.
+            venue_allowed_intervals: dict[VenueID, list[SlotInterval]] = {}
+            for vt in talk.venue_intervals:
+                for interval in vt.intervals:
+                    int_start, int_end = interval
+                    if int_end - int_start + 1 >= talk.duration:
+                        venue_allowed_intervals.setdefault(vt.venue, []).append(interval)
 
-            # If we don't have any intervals, or any intervals large enough to
-            # fit this talk, or no venues specified exist, create a variable
-            # that cannot possibly be satisfied for warning purposes. We do
-            # this because otherwise the valid talk domain or venues would end
-            # up being empty and instead of failing to solve the talk would
-            # just be ignored.
-            if not allowed_intervals or not talk.allowed_venues:
+            # If no venue has an interval large enough to fit this talk, create a
+            # variable that cannot possibly be satisfied for warning purposes. We
+            # do this because otherwise the valid talk domain would end up empty,
+            # and instead of failing to solve the talk would just be ignored.
+            if not venue_allowed_intervals:
                 oh_no_var = self.model.new_bool_var(f"_impossible_{talk.id}")
                 self.model.add(oh_no_var == 1)
                 self.model.add(oh_no_var == 0)
                 continue
 
+            allowed_intervals = {
+                (int_start, int_end - talk.duration + 1)
+                for intervals in venue_allowed_intervals.values()
+                for int_start, int_end in intervals
+            }
+
             # The highest slot a talk can occupy, used later for setting
             # variable search bounds
-            talk_slot_max[talk.id] = max(interval[1] for interval in allowed_intervals)
+            talk_slot_max[talk.id] = max(latest_start for _, latest_start in allowed_intervals)
 
             # Int var representing the possible talk slots inside the set of
             # permitted intervals for this talk
@@ -100,7 +105,7 @@ class SlotMachine:
             # only one will be chosen (enforced by the followup constraint).
             # The active bool var will be true for the slot that is selected.
             venue_active_vars: list[cp_model.IntVar] = []
-            for venue in talk.allowed_venues:
+            for venue in venue_allowed_intervals:
                 active = self.model.new_bool_var(f"talk_venue_active_{talk.id}_{venue}")
                 self.talk_venue_active_vars[(talk.id, venue)] = active
                 venue_active_vars.append(active)
@@ -114,6 +119,28 @@ class SlotMachine:
                 )
                 venue_intervals.setdefault(venue, []).append(optional_talk_venue_interval)
 
+                # Constrain this talk to only be allowed to be active in this
+                # venue in time intervals where it is allowed to be scheduled
+                in_interval_vars: list[cp_model.IntVar] = []
+                for i, (int_start, int_end) in enumerate(venue_allowed_intervals[venue]):
+                    in_this_venue = self.model.new_bool_var(
+                        f"talk_venue_interval_allowed_{talk.id}_{venue}_{i}"
+                    )
+                    self.model.add(start_var >= int_start).only_enforce_if(in_this_venue)
+                    self.model.add(start_var <= int_end - talk.duration + 1).only_enforce_if(in_this_venue)
+
+                    # We use an implication rather than directly referring to
+                    # "active" because otherwise it would be impossible to have
+                    # more than one possible time window in a given venue
+                    self.model.add_implication(in_this_venue, active)
+                    in_interval_vars.append(in_this_venue)
+
+                # At least one of the venue's intervals must be active
+                #
+                # This is unpacked rather than concatenated because otherwise
+                # you end up in mypy hell due to ortools internal types
+                self.model.add_bool_or([active.Not(), *in_interval_vars])
+
             # Exactly one venue must be chosen for a talk
             self.model.add(cp_model.LinearExpr.sum(venue_active_vars) == 1).only_enforce_if(
                 self.infeasibility_var(f"Unable to assign venue for talk {talk.id}")
@@ -121,10 +148,9 @@ class SlotMachine:
 
         # No two talks may overlap in the same venue
         for venue, intervals in venue_intervals.items():
-            if intervals:
-                self.model.add_no_overlap(intervals).only_enforce_if(
-                    self.infeasibility_var(f"Talks overlap in venue {venue}")
-                )
+            self.model.add_no_overlap(intervals).only_enforce_if(
+                self.infeasibility_var(f"Talks overlap in venue {venue}")
+            )
 
         # And a speaker cannot give multiple talks simultaneously
         talks_by_speaker: dict[SpeakerID, list[TalkID]] = {}
@@ -240,7 +266,7 @@ class SlotMachine:
 
         talks = [SlottedTalk(talk, self.problem) for talk in self.problem.talks]
 
-        self.generate_problem(self.problem.venues, talks)
+        self.generate_problem(talks)
 
         self.log.info(
             "Problem generated (%s variables) in %.3f seconds, attempting to solve...",

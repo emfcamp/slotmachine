@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from itertools import chain
 from typing import Any
 
 from dateutil.parser import parse as parse_datetime
@@ -18,6 +17,20 @@ def parse_time_range(range: dict[str, str]) -> tuple[datetime, datetime]:
     return (parse_datetime(range["start"]), parse_datetime(range["end"]))
 
 
+def time_range_to_dict(time_range: TimeRange) -> dict[str, str]:
+    return {"start": time_range[0].isoformat(), "end": time_range[1].isoformat()}
+
+
+@dataclass
+class VenueTimes:
+    """A venue and the time ranges a talk is allowed to be scheduled in it."""
+
+    #: A venue the talk may be scheduled in.
+    venue: VenueID
+    #: Time ranges the talk is allowed to be scheduled in this venue.
+    times: list[TimeRange]
+
+
 @dataclass
 class Talk:
     #: Integer identifier for the talk
@@ -30,10 +43,8 @@ class Talk:
     #: Talks from the same speaker will be prevented from being scheduled at the same time.
     speakers: set[SpeakerID]
 
-    #: Venues the talk is allowed to be scheduled in.
-    allowed_venues: set[VenueID]
-    #: Time ranges the talk is allowed to be scheduled in.
-    allowed_times: list[TimeRange]
+    #: The venues the talk may be scheduled in, each with the time ranges it's allowed in that venue.
+    venue_times: list[VenueTimes]
 
     #: Preferred venues: can be used to assign more popular talks to larger venues.
     preferred_venues: set[VenueID] = field(default_factory=set)
@@ -70,7 +81,11 @@ class Talk:
                 f"Talk {self.id} minutes_after {self.minutes_after} is not a multiple of slot duration {slot_duration}"
             )
 
-        if all(end - start < timedelta(minutes=self.duration) for start, end in self.allowed_times):
+        if all(
+            end - start < timedelta(minutes=self.duration)
+            for vt in self.venue_times
+            for start, end in vt.times
+        ):
             raise ValueError(f"Talk {self.id} has no allowed time ranges long enough to schedule into.")
 
     def to_dict(self) -> dict[str, Any]:
@@ -78,14 +93,12 @@ class Talk:
             "id": self.id,
             "duration": self.duration,
             "speakers": list(self.speakers),
-            "valid_venues": list(self.allowed_venues),
-            "time_ranges": [
-                {"start": tr[0].isoformat(), "end": tr[1].isoformat()} for tr in self.allowed_times
+            "venue_times": [
+                {"venue": vt.venue, "times": [time_range_to_dict(tr) for tr in vt.times]}
+                for vt in self.venue_times
             ],
             "preferred_venues": list(self.preferred_venues),
-            "preferred_times": [
-                {"start": tr[0].isoformat(), "end": tr[1].isoformat()} for tr in self.preferred_times
-            ],
+            "preferred_times": [time_range_to_dict(tr) for tr in self.preferred_times],
             "minutes_after": self.minutes_after,
             "time": self.start_time.isoformat() if self.start_time else None,
             "venue": self.venue,
@@ -97,11 +110,13 @@ class Talk:
             id=talk["id"],
             duration=talk["duration"],
             speakers=set(talk["speakers"]),
-            allowed_venues=set(talk["valid_venues"]),
+            venue_times=[
+                VenueTimes(venue=vt["venue"], times=[parse_time_range(r) for r in vt["times"]])
+                for vt in talk["venue_times"]
+            ],
             preferred_venues=set(talk.get("preferred_venues", [])),
-            allowed_times=[parse_time_range(r) for r in talk["time_ranges"]],
             preferred_times=[parse_time_range(r) for r in talk.get("preferred_times", [])],
-            minutes_after=10,
+            minutes_after=talk.get("minutes_after", 10),
             start_time=parse_datetime(talk.get("time", "")) if talk.get("time") else None,
             venue=talk.get("venue"),
         )
@@ -135,12 +150,12 @@ class SchedulingProblem:
         # The start_time is the epoch that the solver uses, so it must be the earliest time present
         # in any part of the scheduling problem, or negative slot numbers will cause issues.
         self.start_time = min(
-            [range[0] for talk in self.talks for range in talk.allowed_times]
-            + [range[0] for talk in self.talks for range in talk.preferred_times]
+            [time_range[0] for talk in self.talks for vt in talk.venue_times for time_range in vt.times]
+            + [time_range[0] for talk in self.talks for time_range in talk.preferred_times]
             + [talk.start_time for talk in self.talks if talk.start_time is not None]
         )
 
-        self.venues = set(chain.from_iterable(talk.allowed_venues for talk in self.talks))
+        self.venues = {vt.venue for talk in self.talks for vt in talk.venue_times}
 
         for talk in self.talks:
             talk.validate(self.slot_duration)
