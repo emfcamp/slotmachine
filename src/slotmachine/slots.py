@@ -47,6 +47,21 @@ def calc_time(event_start: datetime, slots: int, slot_duration: int) -> datetime
     return event_start + relativedelta.relativedelta(minutes=slots * slot_duration)
 
 
+def merge_intervals(intervals: list[SlotInterval]) -> list[SlotInterval]:
+    """Merge overlapping and adjacent slot intervals into contiguous ones.
+
+    If we don't do this then talks will be unable to span across intervals.
+    """
+
+    merged: list[SlotInterval] = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1] + 1:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 class SlottedTalk:
     """A mirror of the Talk class with time measured in slots.
 
@@ -82,21 +97,25 @@ class SlottedTalk:
         self.venue_intervals = [
             SlottedVenueIntervals(
                 venue=vt.venue,
-                intervals=[
-                    calculate_slots(
-                        problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
-                    )
-                    for time_range in vt.times
-                ],
+                intervals=merge_intervals(
+                    [
+                        calculate_slots(
+                            problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
+                        )
+                        for time_range in vt.times
+                    ]
+                ),
             )
             for vt in talk.venue_times
         ]
-        self.preferred_intervals = [
-            calculate_slots(
-                problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
-            )
-            for time_range in talk.preferred_times
-        ]
+        self.preferred_intervals = merge_intervals(
+            [
+                calculate_slots(
+                    problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
+                )
+                for time_range in talk.preferred_times
+            ]
+        )
 
         if talk.start_time:
             self.start = calc_slot(problem.start_time, talk.start_time, problem.slot_duration)

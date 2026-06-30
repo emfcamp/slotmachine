@@ -17,6 +17,16 @@ def parse_time_range(range: dict[str, str]) -> tuple[datetime, datetime]:
     return (parse_datetime(range["start"]), parse_datetime(range["end"]))
 
 
+def merge_contiguous_time_ranges(ranges: list[TimeRange]) -> list[TimeRange]:
+    merged: list[TimeRange] = []
+    for start, end in sorted(ranges):
+        if merged and start <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
 def time_range_to_dict(time_range: TimeRange) -> dict[str, str]:
     return {"start": time_range[0].isoformat(), "end": time_range[1].isoformat()}
 
@@ -81,10 +91,14 @@ class Talk:
                 f"Talk {self.id} minutes_after {self.minutes_after} is not a multiple of slot duration {slot_duration}"
             )
 
+        # We merge the time ranges here because often they are adjacent and a
+        # talk may be longer than either one. They are actually merged as
+        # intervals later before the solver gets them, but we need to do it
+        # here too or they may not validate.
         if all(
             end - start < timedelta(minutes=self.duration)
             for vt in self.venue_times
-            for start, end in vt.times
+            for start, end in merge_contiguous_time_ranges(vt.times)
         ):
             raise ValueError(f"Talk {self.id} has no allowed time ranges long enough to schedule into.")
 
