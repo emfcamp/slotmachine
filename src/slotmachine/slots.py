@@ -100,7 +100,10 @@ class SlottedTalk:
                 intervals=merge_intervals(
                     [
                         calculate_slots(
-                            problem.start_time, *time_range, problem.slot_duration, spacing_slots=changeover_after
+                            problem.start_time,
+                            *time_range,
+                            problem.slot_duration,
+                            spacing_slots=changeover_after,
                         )
                         for time_range in vt.times
                     ]
