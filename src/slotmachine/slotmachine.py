@@ -178,11 +178,17 @@ class SlotMachine:
 
         # Maximise the number of things in their preferred venues (for putting
         # big talks on big stages)
+        VENUE_WEIGHT_CAP = 5
+        max_venue_weight = max((vt.venue_weight for talk in talks for vt in talk.venue_intervals), default=1)
         for talk in talks:
-            for venue in talk.preferred_venues:
-                if (talk.id, venue) in self.talk_venue_active_vars:
-                    obj_vars.append(self.talk_venue_active_vars[(talk.id, venue)])
-                    obj_scores.append(5 * talk.duration)
+            for vt in talk.venue_intervals:
+                venue_var = self.talk_venue_active_vars.get((talk.id, vt.venue))
+                if vt.venue_weight <= 0 or venue_var is None:
+                    continue
+                weight = round(vt.venue_weight / max_venue_weight * VENUE_WEIGHT_CAP)
+                if weight > 0:
+                    obj_vars.append(venue_var)
+                    obj_scores.append(weight * talk.duration)
 
         # Maximise the number of things in their preferred slots. This is
         # frustratingly ugly because while or-tools provides clean interfaces
@@ -255,6 +261,69 @@ class SlotMachine:
             if (talk.id, talk.venue) in self.talk_venue_active_vars:
                 obj_vars.append(self.talk_venue_active_vars[(talk.id, talk.venue)])
                 obj_scores.append(talk.duration)
+
+        # Optionally discourage groups of talks from running at the same time.
+        #
+        # This breaks down into two separate user-specified sections:
+        # - Conflicts, for nudging specific talks to be run at separate times
+        # - Tags, for ensuring topic diversty across time ranges
+        #
+        # This is modelled as a set of _optional_ intervals that are not
+        # allowed to overlap, with a positive weight for each optional interval
+        # that is active - thus rewarding the most non-overlapping intervals
+        content_duration = {talk.id: talk.content_duration for talk in talks}
+
+        def discourage_concurrency(talk_ids: list[TalkID], weight: int, name: str) -> None:
+            intervals: list[cp_model.IntervalVar] = []
+            for talk_id in talk_ids:
+                start = self.talk_slot_vars[talk_id]
+                duration = content_duration[talk_id]
+                present = self.model.new_bool_var(f"{name}_present_{talk_id}")
+                intervals.append(
+                    self.model.new_optional_interval_var(
+                        start, duration, start + duration, present, f"{name}_interval_{talk_id}"
+                    )
+                )
+                obj_vars.append(present)
+                obj_scores.append(weight)
+            self.model.add_no_overlap(intervals)
+
+        # Conflicts
+        #
+        # A conflict is a group of two or more talks with a weight. The weight
+        # is rescaled between 1-CONFLICT_WEIGHT_CAP to prevent someone giving a
+        # conflict weight of 999999 overriding everything in the solver
+        # optimisation by accident. It might be nice to permit this one day.
+        #
+        # Generally a good idea is to pass the number of attendees who would be
+        # affected by a conflict as the weight.
+        CONFLICT_WEIGHT_CAP = 15
+        max_weight = max((conflict.weight for conflict in self.problem.conflicts), default=1)
+        for conflict_index, conflict in enumerate(self.problem.conflicts):
+            group = [talk_id for talk_id in sorted(conflict.talks) if talk_id in self.talk_slot_vars]
+            if len(group) >= 2:
+                weight = max(1, round(conflict.weight / max_weight * CONFLICT_WEIGHT_CAP))
+                discourage_concurrency(group, weight, f"conflict_{conflict_index}")
+
+        # Tags
+        #
+        # Tags are used to encourage talks to be scheduled at different times
+        # from talks that share one or more of the same tags, to create topic
+        # diversity across times. They have a very weak weight so will just
+        # break score ties in the solver.
+        #
+        # A talk with multiple tags will score more highly if multiple tags do
+        # _not_ overlap, thus meaning we force tags sharing multiple tags apart
+        # more strongly
+        talks_by_tag: dict[str, list[TalkID]] = {}
+        for talk in talks:
+            if talk.id in self.talk_slot_vars:
+                for tag in talk.tags:
+                    talks_by_tag.setdefault(tag, []).append(talk.id)
+
+        for tag_index, tag in enumerate(sorted(talks_by_tag)):
+            if len(talks_by_tag[tag]) >= 2:
+                discourage_concurrency(talks_by_tag[tag], 1, f"tag_{tag_index}")
 
         if obj_vars:
             self.model.maximize(cp_model.LinearExpr.weighted_sum(obj_vars, obj_scores))

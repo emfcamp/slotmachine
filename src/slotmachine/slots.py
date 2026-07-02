@@ -18,6 +18,7 @@ class SlottedVenueIntervals:
 
     venue: VenueID
     intervals: list[SlotInterval]
+    venue_weight: int = 0
 
 
 def calc_slot(range_start: datetime, range_end: datetime, slot_duration: int) -> Slot:
@@ -71,9 +72,12 @@ class SlottedTalk:
     id: TalkID
     #: Slotted duration, including changeover
     duration: Slot
+    #: Slotted duration, excluding changeover
+    content_duration: Slot
     speakers: set[SpeakerID]
 
-    preferred_venues: set[VenueID]
+    #: Tags used to gently prevent similar talks from running concurrently
+    tags: set[str]
 
     #: The venues the talk may be scheduled in, each with the slot intervals allowed in that venue.
     venue_intervals: list[SlottedVenueIntervals]
@@ -89,14 +93,16 @@ class SlottedTalk:
         self.id = talk.id
 
         self.duration = (talk.duration + talk.minutes_after) // problem.slot_duration
+        self.content_duration = talk.duration // problem.slot_duration
 
         self.speakers = talk.speakers
-        self.preferred_venues = talk.preferred_venues
+        self.tags = talk.tags
 
         changeover_after = talk.minutes_after // problem.slot_duration
         self.venue_intervals = [
             SlottedVenueIntervals(
                 venue=vt.venue,
+                venue_weight=vt.venue_weight,
                 intervals=merge_intervals(
                     [
                         calculate_slots(
