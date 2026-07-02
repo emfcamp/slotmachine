@@ -32,6 +32,33 @@ def time_range_to_dict(time_range: TimeRange) -> dict[str, str]:
 
 
 @dataclass
+class Conflict:
+    """A set of talks that should be discouraged from running at the same time.
+
+    Weight is re-scaled internally within the solver.
+    """
+
+    #: Two or more talks in conflict
+    talks: set[TalkID]
+    #: Relative weight for this conflict
+    weight: int
+
+    def __post_init__(self) -> None:
+        self.talks = set(self.talks)
+        if len(self.talks) < 2:
+            raise ValueError("A conflict must involve two or more talks")
+        if self.weight <= 0:
+            raise ValueError("Conflict weight must be positive")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"talks": sorted(self.talks), "weight": self.weight}
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Conflict":
+        return cls(talks=data["talks"], weight=data["weight"])
+
+
+@dataclass
 class VenueTimes:
     """A venue and the time ranges a talk is allowed to be scheduled in it."""
 
@@ -39,6 +66,9 @@ class VenueTimes:
     venue: VenueID
     #: Time ranges the talk is allowed to be scheduled in this venue.
     times: list[TimeRange]
+    #: Relative weight for scheduling the talk in this venue.
+    #: Higher is more preferred. Weights are rescaled internally.
+    venue_weight: int = 0
 
 
 @dataclass
@@ -56,9 +86,10 @@ class Talk:
     #: The venues the talk may be scheduled in, each with the time ranges it's allowed in that venue.
     venue_times: list[VenueTimes]
 
-    #: Preferred venues: can be used to assign more popular talks to larger venues.
-    preferred_venues: set[VenueID] = field(default_factory=set)
     preferred_times: list[TimeRange] = field(default_factory=list)
+
+    #: Deconfliction tags. Scheduler avoids scheduling talks with the same tags at the same time.
+    tags: set[str] = field(default_factory=set)
 
     #: Number of minutes allowed after the talk for changeover
     minutes_after: int = 10
@@ -108,11 +139,15 @@ class Talk:
             "duration": self.duration,
             "speakers": list(self.speakers),
             "venue_times": [
-                {"venue": vt.venue, "times": [time_range_to_dict(tr) for tr in vt.times]}
+                {
+                    "venue": vt.venue,
+                    "venue_weight": vt.venue_weight,
+                    "times": [time_range_to_dict(tr) for tr in vt.times],
+                }
                 for vt in self.venue_times
             ],
-            "preferred_venues": list(self.preferred_venues),
             "preferred_times": [time_range_to_dict(tr) for tr in self.preferred_times],
+            "tags": list(self.tags),
             "minutes_after": self.minutes_after,
             "time": self.start_time.isoformat() if self.start_time else None,
             "venue": self.venue,
@@ -125,11 +160,15 @@ class Talk:
             duration=talk["duration"],
             speakers=set(talk["speakers"]),
             venue_times=[
-                VenueTimes(venue=vt["venue"], times=[parse_time_range(r) for r in vt["times"]])
+                VenueTimes(
+                    venue=vt["venue"],
+                    times=[parse_time_range(r) for r in vt["times"]],
+                    venue_weight=vt.get("venue_weight", 0),
+                )
                 for vt in talk["venue_times"]
             ],
-            preferred_venues=set(talk.get("preferred_venues", [])),
             preferred_times=[parse_time_range(r) for r in talk.get("preferred_times", [])],
+            tags=set(talk.get("tags", [])),
             minutes_after=talk.get("minutes_after", 10),
             start_time=parse_datetime(talk.get("time", "")) if talk.get("time") else None,
             venue=talk.get("venue"),
@@ -150,16 +189,26 @@ class SchedulingProblem:
     #: All durations and timestamp properties of talks must be a multiple of this, or an exception will be thrown.
     slot_duration: int
 
+    #: Groups of talks to discourage from running concurrently.
+    conflicts: list[Conflict]
+
     ## Calculated fields
     start_time: datetime
     venues: set[VenueID]
 
-    def __init__(self, talks: list[Talk], slot_duration: int):
+    def __init__(self, talks: list[Talk], slot_duration: int, conflicts: list[Conflict] | None = None):
         if len(talks) == 0:
             raise ValueError("No talks provided")
 
         self.talks = talks
         self.slot_duration = slot_duration
+        self.conflicts = conflicts or []
+
+        talk_ids = {talk.id for talk in self.talks}
+        for conflict in self.conflicts:
+            unknown = set(conflict.talks) - talk_ids
+            if unknown:
+                raise ValueError(f"Conflict includes unknown talks: {unknown}")
 
         # The start_time is the epoch that the solver uses, so it must be the earliest time present
         # in any part of the scheduling problem, or negative slot numbers will cause issues.
@@ -174,12 +223,17 @@ class SchedulingProblem:
         for talk in self.talks:
             talk.validate(self.slot_duration)
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "talks": [talk.to_dict() for talk in self.talks],
+            "conflicts": [conflict.to_dict() for conflict in self.conflicts],
+        }
+
     @classmethod
-    def from_dict(cls, data: list[dict[str, Any]]) -> "SchedulingProblem":
-        talks = []
-        for talk_data in data:
-            talks.append(Talk.from_dict(talk_data))
-        return SchedulingProblem(talks=talks, slot_duration=10)
+    def from_dict(cls, data: dict[str, Any], conflicts: list[Conflict] | None = None) -> "SchedulingProblem":
+        talks = [Talk.from_dict(t) for t in data["talks"]]
+        conflicts = [Conflict.from_dict(c) for c in data.get("conflicts", [])]
+        return SchedulingProblem(talks=talks, slot_duration=10, conflicts=conflicts)
 
 
 @dataclass(frozen=True)
@@ -200,5 +254,5 @@ class SchedulingSolution:
     def __eq__(self, other: Any) -> bool:
         return isinstance(other, SchedulingSolution) and self.talks == other.talks
 
-    def to_dict(self) -> list[dict[str, Any]]:
-        return [talk.to_dict() for talk in self.talks]
+    def to_dict(self) -> dict[str, Any]:
+        return {"talks": [talk.to_dict() for talk in self.talks]}

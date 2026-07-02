@@ -12,7 +12,7 @@ SlotMachine is used to generate the schedule for [Electromagnetic Field](https:/
 Create a `SchedulingProblem` out of a list of `Talk`s:
 
 ```python
-from slotmachine import Talk, VenueTimes, SchedulingProblem
+from slotmachine import Talk, VenueTimes, SchedulingProblem, Conflict
 
 talks = [
     Talk(
@@ -22,13 +22,22 @@ talks = [
         speakers={1, 2},
         # Duration of the talk in minutes
         duration=30,
-        # The venues the talk may be scheduled in, each with its own allowed time ranges.
+        # Optional: The system will attempt to avoid running talks with the same tags at the same time.
+        tags={"security", "hardware"},
+        # The venues the talk may be scheduled in, each with its own allowed time
+        # ranges. An optional venue_weight expresses a preference for scheduling
+        # the talk in that venue (0 = no preference); weights are rescaled
+        # internally, higher means more preferred - e.g. for putting bigger talks
+        # on bigger stages.
         venue_times=[
             VenueTimes(
                 venue=1,
                 times=[
                     (datetime(2026, 5, 16, 12, 0, 0), datetime(2026, 5, 16, 19, 0, 0)),
                 ],
+                # Optional: Weights above 0 increase the chance of this venue being selected.
+                # Higher numbers have higher weight, equal numbers get equal preference.
+                venue_weight=10,
             ),
             VenueTimes(
                 venue=2,
@@ -45,7 +54,12 @@ problem = SchedulingProblem(
     talks=talks,
     # The length of a "slot" in minutes - this is the granularity the scheduler will operate at.
     # All durations and allowed times must be multiples of this number.
-    slot_duration=10
+    slot_duration=10,
+    # Optional: Weighted groups of talks to strongly discourage from running at
+    # the same time. Each referenced talk must be in `talks`, and weight must
+    # be a positive integer. Suggestion is to use the number of attendees who
+    # would be affected by this conflict.
+    conflicts=[Conflict(talks={1, 2}, weight=100)],
 )
 ```
 

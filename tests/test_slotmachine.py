@@ -7,7 +7,7 @@ from hypothesis import assume, given
 from hypothesis import strategies as st
 
 from slotmachine import SlotMachine, Talk, Unsatisfiable
-from slotmachine.data import SchedulingProblem, SchedulingSolution, TimeRange, VenueTimes
+from slotmachine.data import Conflict, SchedulingProblem, SchedulingSolution, TimeRange, VenueTimes
 
 SLOT_DURATION = 10
 
@@ -351,44 +351,6 @@ def test_talk_clash():
             assert talk.venue == 102
 
 
-def test_preferred_venues():
-    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 19:00"))]
-    venues = {101, 102, 103}
-
-    talks = [
-        Talk(
-            id=1,
-            duration=60,
-            venue_times=allowed(venues, allowed_times),
-            preferred_venues={102},
-            speakers={1},
-        ),
-        Talk(
-            id=2,
-            duration=60,
-            venue_times=allowed(venues, allowed_times),
-            preferred_venues={103},
-            speakers={2},
-        ),
-        Talk(
-            id=3,
-            duration=60,
-            venue_times=allowed(venues, allowed_times),
-            preferred_venues={103},
-            speakers={3},
-        ),
-    ]
-
-    solved = schedule_assert_solvable(talks)
-
-    for talk in solved.talks:
-        match talk.id:
-            case 1:
-                assert talk.venue == 102
-            case 2 | 3:
-                assert talk.venue == 103
-
-
 def test_large_1():
     # A larger (but still straightforward) test set:
     # 4 days, 3 venues. All unique speakers and all talks allowed in all venues.
@@ -430,6 +392,66 @@ def test_large_1():
         )
 
     schedule_assert_fail(talks)
+
+
+def test_higher_venue_weight_wins():
+    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 14:00"))]
+    talk = Talk(
+        id=1,
+        duration=50,
+        speakers={1},
+        venue_times=[
+            VenueTimes(venue=101, times=list(allowed_times), venue_weight=1),
+            VenueTimes(venue=102, times=list(allowed_times), venue_weight=100),
+        ],
+    )
+    (solved,) = schedule_assert_solvable([talk]).talks
+    assert solved.venue == 102
+
+
+def test_tags_are_spread_in_time():
+    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 16:00"))]
+    talks = [
+        Talk(id=1, duration=60, venue_times=allowed({101}, allowed_times), speakers={1}, tags={"test"}),
+        Talk(id=2, duration=60, venue_times=allowed({102}, allowed_times), speakers={2}, tags={"test"}),
+    ]
+
+    solved = {talk.id: talk for talk in schedule_assert_solvable(talks).talks}
+    assert not time_overlaps(
+        (solved[1].start_time, solved[1].end_time),
+        (solved[2].start_time, solved[2].end_time),
+    )
+
+
+def test_untagged_talks_can_run_concurrently():
+    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 16:00"))]
+    talks = [
+        Talk(id=1, duration=60, venue_times=allowed({101}, allowed_times), speakers={1}, tags={"test"}),
+        Talk(id=2, duration=60, venue_times=allowed({102}, allowed_times), speakers={2}, tags={"test2"}),
+    ]
+
+    schedule_assert_solvable(talks)
+
+
+def test_conflicts_are_deconflicted():
+    allowed_times = [(ts("2016-08-06 13:00"), ts("2016-08-06 16:00"))]
+    talks = [
+        Talk(id=1, duration=60, venue_times=allowed({101}, allowed_times), speakers={1}),
+        Talk(id=2, duration=60, venue_times=allowed({102}, allowed_times), speakers={2}),
+    ]
+    problem = SchedulingProblem(
+        talks=talks,
+        slot_duration=SLOT_DURATION,
+        conflicts=[Conflict(talks={1, 2}, weight=10)],
+    )
+    solution = SlotMachine(problem).solve()
+    assert_solution_looks_reasonable(problem, solution)
+
+    solved = {talk.id: talk for talk in solution.talks}
+    assert not time_overlaps(
+        (solved[1].start_time, solved[1].end_time),
+        (solved[2].start_time, solved[2].end_time),
+    )
 
 
 def test_invalid_allowed_time():
