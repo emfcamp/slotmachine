@@ -105,7 +105,7 @@ class SlotMachine:
             # only one will be chosen (enforced by the followup constraint).
             # The active bool var will be true for the slot that is selected.
             venue_active_vars: list[cp_model.IntVar] = []
-            for venue in venue_allowed_intervals:
+            for venue in sorted(venue_allowed_intervals):
                 active = self.model.new_bool_var(f"talk_venue_active_{talk.id}_{venue}")
                 self.talk_venue_active_vars[(talk.id, venue)] = active
                 venue_active_vars.append(active)
@@ -147,7 +147,7 @@ class SlotMachine:
             )
 
         # No two talks may overlap in the same venue
-        for venue, intervals in venue_intervals.items():
+        for venue, intervals in sorted(venue_intervals.items()):
             self.model.add_no_overlap(intervals).only_enforce_if(
                 self.infeasibility_var(f"Talks overlap in venue {venue}")
             )
@@ -157,10 +157,10 @@ class SlotMachine:
         for talk in talks:
             # Ensure we've not filtered the talk for being impossible
             if talk.id in talk_intervals:
-                for speaker in talk.speakers:
+                for speaker in sorted(talk.speakers):
                     talks_by_speaker.setdefault(speaker, []).append(talk.id)
 
-        for speaker, conflicts in talks_by_speaker.items():
+        for speaker, conflicts in sorted(talks_by_speaker.items()):
             if len(conflicts) > 1:
                 self.model.add_no_overlap([talk_intervals[talk_id] for talk_id in conflicts]).only_enforce_if(
                     self.infeasibility_var(f"Conflict for speaker {speaker}")
@@ -299,7 +299,8 @@ class SlotMachine:
         # affected by a conflict as the weight.
         CONFLICT_WEIGHT_CAP = 15
         max_weight = max((conflict.weight for conflict in self.problem.conflicts), default=1)
-        for conflict_index, conflict in enumerate(self.problem.conflicts):
+        sorted_conflicts = sorted(self.problem.conflicts, key=lambda c: (sorted(c.talks), c.weight))
+        for conflict_index, conflict in enumerate(sorted_conflicts):
             group = [talk_id for talk_id in sorted(conflict.talks) if talk_id in self.talk_slot_vars]
             if len(group) >= 2:
                 weight = max(1, round(conflict.weight / max_weight * CONFLICT_WEIGHT_CAP))
@@ -318,7 +319,7 @@ class SlotMachine:
         talks_by_tag: dict[str, list[TalkID]] = {}
         for talk in talks:
             if talk.id in self.talk_slot_vars:
-                for tag in talk.tags:
+                for tag in sorted(talk.tags):
                     talks_by_tag.setdefault(tag, []).append(talk.id)
 
         for tag_index, tag in enumerate(sorted(talks_by_tag)):
@@ -333,7 +334,7 @@ class SlotMachine:
 
         self.log.info("Generating schedule problem...")
 
-        talks = [SlottedTalk(talk, self.problem) for talk in self.problem.talks]
+        talks = [SlottedTalk(talk, self.problem) for talk in sorted(self.problem.talks, key=lambda t: t.id)]
 
         self.generate_problem(talks)
 
@@ -391,7 +392,7 @@ class SlotMachine:
             start_val = self._solver.value(self.talk_slot_vars[talk.id])
             # This iterates over all possible venue placement vars to find the
             # one that was actually selected ("active")
-            for venue in self.problem.venues:
+            for venue in sorted(self.problem.venues):
                 if (talk.id, venue) in self.talk_venue_active_vars and bool(
                     self._solver.value(self.talk_venue_active_vars[(talk.id, venue)])
                 ):
