@@ -137,7 +137,7 @@ class Talk:
         return {
             "id": self.id,
             "duration": self.duration,
-            "speakers": list(self.speakers),
+            "speakers": sorted(self.speakers),
             "venue_times": [
                 {
                     "venue": vt.venue,
@@ -147,7 +147,7 @@ class Talk:
                 for vt in self.venue_times
             ],
             "preferred_times": [time_range_to_dict(tr) for tr in self.preferred_times],
-            "tags": list(self.tags),
+            "tags": sorted(self.tags),
             "minutes_after": self.minutes_after,
             "time": self.start_time.isoformat() if self.start_time else None,
             "venue": self.venue,
