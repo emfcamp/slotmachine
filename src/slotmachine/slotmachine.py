@@ -366,8 +366,10 @@ class SlotMachine:
 
         solve_start = time.monotonic()
         self._solver = cp_model.CpSolver()
-        self._solver.parameters.num_search_workers = 8
         self._solver.parameters.max_time_in_seconds = max_time_in_seconds
+        # We are fine being extremely close to optimal rather than thinking
+        # very hard about tiny improvements for a long time
+        self._solver.parameters.relative_gap_limit = 0.005
         self._solver.parameters.log_search_progress = debug
         self._solver.parameters.log_to_stdout = debug
 
