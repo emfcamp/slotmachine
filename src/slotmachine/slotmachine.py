@@ -5,7 +5,7 @@ from datetime import timedelta
 from ortools.sat.python import cp_model
 
 from .data import SchedulingProblem, SchedulingSolution, SpeakerID, TalkID, VenueID
-from .slots import Slot, SlotInterval, SlottedTalk
+from .slots import Slot, SlotInterval, SlottedTalk, merge_intervals
 
 
 class Unsatisfiable(Exception):
@@ -30,6 +30,8 @@ class SlotMachine:
         venue_intervals: dict[VenueID, list[cp_model.IntervalVar]] = {}
         talk_intervals: dict[TalkID, cp_model.IntervalVar] = {}
         talk_slot_max: dict[TalkID, Slot] = {}
+        venue_windows: dict[VenueID, list[SlotInterval]] = {}
+        venue_load: dict[VenueID, list[tuple[cp_model.IntVar, int]]] = {}
 
         ## Main constraint problem generation
         #
@@ -91,6 +93,8 @@ class SlotMachine:
                 active = self.model.new_bool_var(f"talk_venue_active_{talk.id}_{venue}")
                 self.talk_venue_active_vars[(talk.id, venue)] = active
                 venue_active_vars.append(active)
+                venue_windows.setdefault(venue, []).extend(venue_allowed_intervals[venue])
+                venue_load.setdefault(venue, []).append((active, talk.duration))
 
                 optional_talk_venue_interval = self.model.new_optional_interval_var(
                     start_var,
@@ -129,6 +133,20 @@ class SlotMachine:
         # No two talks may overlap in the same venue
         for _venue, intervals in sorted(venue_intervals.items()):
             self.model.add_no_overlap(intervals)
+
+        # The talks chosen for a venue cannot exceed its open slots. This
+        # actually does almost nothing because the rest of the model already
+        # enforces this, but declaring it explicitly helps the solver discard
+        # impossible solutions faster
+        for venue, load in sorted(venue_load.items()):
+            capacity = sum(end - start + 1 for start, end in merge_intervals(venue_windows[venue]))
+            self.model.add(
+                cp_model.LinearExpr.weighted_sum(
+                    [active for active, _ in load],
+                    [duration for _, duration in load],
+                )
+                <= capacity
+            )
 
         # And a speaker cannot give multiple talks simultaneously
         talks_by_speaker: dict[SpeakerID, list[TalkID]] = {}
