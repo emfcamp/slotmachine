@@ -154,17 +154,18 @@ class SlotMachine:
 
         # Maximise the number of things in their preferred venues (for putting
         # big talks on big stages)
-        VENUE_WEIGHT_CAP = 5
+        VENUE_WEIGHT_CAP = 10
         max_venue_weight = max((vt.venue_weight for talk in talks for vt in talk.venue_intervals), default=1)
         for talk in talks:
             for vt in talk.venue_intervals:
                 venue_var = self.talk_venue_active_vars.get((talk.id, vt.venue))
                 if vt.venue_weight <= 0 or venue_var is None:
                     continue
-                weight = round(vt.venue_weight / max_venue_weight * VENUE_WEIGHT_CAP)
-                if weight > 0:
-                    obj_vars.append(venue_var)
-                    obj_scores.append(weight * talk.duration)
+                # max() ensures a small weight never rounds to zero and gets
+                # silently dropped when large weights are present
+                weight = max(1, round(vt.venue_weight / max_venue_weight * VENUE_WEIGHT_CAP))
+                obj_vars.append(venue_var)
+                obj_scores.append(weight * talk.duration)
 
         # Maximise the number of things in their preferred slots. This is
         # frustratingly ugly because while or-tools provides clean interfaces
