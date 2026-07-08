@@ -305,6 +305,21 @@ class SlotMachine:
         if obj_vars:
             self.model.maximize(cp_model.LinearExpr.weighted_sum(obj_vars, obj_scores))
 
+        # Anything that is already scheduled is likely to be in a valid slot &
+        # venue, and quite probably the optimal one. We also want talks to stay
+        # in their slots where possible. Given this, we give the solver a hint
+        # that the current slot/venue is a good place to start searching for
+        # all of these talks, radically improving performance when the schedule
+        # is mostly already scheduled.
+        for talk in talks:
+            if talk.start is None or talk.venue is None:
+                continue
+            if talk.id not in self.talk_slot_vars:
+                continue
+            self.model.add_hint(self.talk_slot_vars[talk.id], talk.start)
+            if (talk.id, talk.venue) in self.talk_venue_active_vars:
+                self.model.add_hint(self.talk_venue_active_vars[(talk.id, talk.venue)], 1)
+
     def solve(self, debug: bool = False, max_time_in_seconds: float = 30.0) -> SchedulingSolution:
         t0 = time.monotonic()
 
