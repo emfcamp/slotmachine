@@ -35,6 +35,10 @@ def time_range_to_dict(time_range: TimeRange) -> dict[str, str]:
 class Conflict:
     """A set of talks that should be discouraged from running at the same time.
 
+    The optional "spread_across" param encourages the conflict talks to each
+    run in a different one of the given time ranges. There must be at least as
+    many ranges given as talks.
+
     Weight is re-scaled internally within the solver.
     """
 
@@ -42,20 +46,31 @@ class Conflict:
     talks: set[TalkID]
     #: Relative weight for this conflict
     weight: int
+    #: Time ranges to spread the talks across
+    spread_across: set[TimeRange] | None = None
 
     def __post_init__(self) -> None:
         self.talks = set(self.talks)
+        if self.spread_across is not None:
+            self.spread_across = set(self.spread_across)
         if len(self.talks) < 2:
             raise ValueError("A conflict must involve two or more talks")
         if self.weight <= 0:
             raise ValueError("Conflict weight must be positive")
+        if self.spread_across is not None and len(self.spread_across) < len(self.talks):
+            raise ValueError("spread_across must provide at least as many time ranges as talks")
 
     def to_dict(self) -> dict[str, Any]:
-        return {"talks": sorted(self.talks), "weight": self.weight}
+        result: dict[str, Any] = {"talks": sorted(self.talks), "weight": self.weight}
+        if self.spread_across is not None:
+            result["spread_across"] = [time_range_to_dict(r) for r in sorted(self.spread_across)]
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Conflict":
-        return cls(talks=data["talks"], weight=data["weight"])
+        spread = data.get("spread_across")
+        spread_across = {parse_time_range(r) for r in spread} if spread is not None else None
+        return cls(talks=data["talks"], weight=data["weight"], spread_across=spread_across)
 
 
 @dataclass

@@ -45,6 +45,7 @@ talks = [
                     (datetime(2026, 5, 16, 14, 0, 0), datetime(2026, 5, 16, 19, 0, 0)),
                 ],
             ),
+            ...
         ],
     ),
     ...
@@ -59,7 +60,22 @@ problem = SchedulingProblem(
     # the same time. Each referenced talk must be in `talks`, and weight must
     # be a positive integer. Suggestion is to use the number of attendees who
     # would be affected by this conflict.
-    conflicts=[Conflict(talks={1, 2}, weight=100)],
+    conflicts=[
+        Conflict(talks={1, 2}, weight=10),
+        Conflict(
+            talks={3, 4},
+            weight=50,
+            # Optional: Specify a set of time ranges to attempt to spread the
+            # conflict across, there must be at least the same number of ranges
+            # as there are talks in the conflict. This is useful for ensuring that
+            # something running multiple times has instances on different days.
+            spread_across={
+                (datetime(2026, 5, 16, 0, 0, 0), datetime(2026, 5, 17, 0, 0, 0)),
+                (datetime(2026, 5, 17, 0, 0, 0), datetime(2026, 5, 18, 0, 0, 0)),
+            },
+        ),
+        ...
+    ],
 )
 ```
 

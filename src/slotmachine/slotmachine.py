@@ -5,7 +5,7 @@ from datetime import timedelta
 from ortools.sat.python import cp_model
 
 from .data import SchedulingProblem, SchedulingSolution, SpeakerID, TalkID, VenueID
-from .slots import Slot, SlotInterval, SlottedTalk, merge_intervals
+from .slots import Slot, SlotInterval, SlottedConflict, SlottedTalk, merge_intervals
 
 
 class Unsatisfiable(Exception):
@@ -22,7 +22,7 @@ class SlotMachine:
         self.talk_slot_vars: dict[TalkID, cp_model.IntVar] = {}
         self.talk_venue_active_vars: dict[tuple[TalkID, VenueID], cp_model.IntVar] = {}
 
-    def generate_problem(self, talks: list[SlottedTalk]) -> None:
+    def generate_problem(self, talks: list[SlottedTalk], conflicts: list[SlottedConflict]) -> None:
         self.model = cp_model.CpModel()
         self.talk_slot_vars = {}
         self.talk_venue_active_vars = {}
@@ -161,9 +161,9 @@ class SlotMachine:
                 for speaker in sorted(talk.speakers):
                     talks_by_speaker.setdefault(speaker, []).append(talk.id)
 
-        for _speaker, conflicts in sorted(talks_by_speaker.items()):
-            if len(conflicts) > 1:
-                self.model.add_no_overlap([talk_intervals[talk_id] for talk_id in conflicts])
+        for _speaker, speaker_talks in sorted(talks_by_speaker.items()):
+            if len(speaker_talks) > 1:
+                self.model.add_no_overlap([talk_intervals[talk_id] for talk_id in speaker_talks])
 
         ## Optimisation objective generation
         #
@@ -293,6 +293,31 @@ class SlotMachine:
                 obj_scores.append(weight)
             self.model.add_no_overlap(intervals)
 
+        # Encourage the talks in a spread_across conflict to each run in a
+        # different one of its time ranges
+        def encourage_different_ranges(
+            talk_ids: list[TalkID], ranges: list[SlotInterval], weight: int, name: str
+        ) -> None:
+            # If all of the talks are static we can't move any of them
+            if all(talk_id in static_talks for talk_id in talk_ids):
+                return
+
+            for index, (lo, hi) in enumerate(ranges):
+                # Bools indicating if a talk's start slot falls in each range
+                in_range: list[cp_model.IntVar] = []
+                for talk_id in talk_ids:
+                    start = self.talk_slot_vars[talk_id]
+                    here = self.model.new_bool_var(f"{name}_in_{index}_{talk_id}")
+                    self.model.add(lo <= start).only_enforce_if(here)
+                    self.model.add(start < hi).only_enforce_if(here)
+                    in_range.append(here)
+
+                # Reward this range being used by at least one talk.
+                used = self.model.new_bool_var(f"{name}_used_{index}")
+                self.model.add(used <= cp_model.LinearExpr.sum(in_range))
+                obj_vars.append(used)
+                obj_scores.append(weight)
+
         # Conflicts
         #
         # A conflict is a group of two or more talks with a weight. The weight
@@ -302,14 +327,29 @@ class SlotMachine:
         #
         # Generally a good idea is to pass the number of attendees who would be
         # affected by a conflict as the weight.
+        #
+        # This also supports an optional "spread_across" param which is a set
+        # of time ranges to attempt to spread the conflict across, for ensuring
+        # that something running multiple times is scheduled on different days
+        #
+        # We have separate scaling for concurrent/range conflicts because
+        # they're used in different ways and the weight meaning is different,
+        # so we don't want to scale them in the same range
         CONFLICT_WEIGHT_CAP = 15
-        max_weight = max((conflict.weight for conflict in self.problem.conflicts), default=1)
-        sorted_conflicts = sorted(self.problem.conflicts, key=lambda c: (sorted(c.talks), c.weight))
+        max_concurrency_weight = max((c.weight for c in conflicts if c.spread_across is None), default=1)
+        max_spread_weight = max((c.weight for c in conflicts if c.spread_across is not None), default=1)
+        sorted_conflicts = sorted(conflicts, key=lambda c: (sorted(c.talks), c.weight))
         for conflict_index, conflict in enumerate(sorted_conflicts):
             group = [talk_id for talk_id in sorted(conflict.talks) if talk_id in self.talk_slot_vars]
             if len(group) >= 2:
-                weight = max(1, round(conflict.weight / max_weight * CONFLICT_WEIGHT_CAP))
-                discourage_concurrency(group, weight, f"conflict_{conflict_index}")
+                if conflict.spread_across is not None:
+                    weight = max(1, round(conflict.weight / max_spread_weight * CONFLICT_WEIGHT_CAP))
+                    encourage_different_ranges(
+                        group, conflict.spread_across, weight, f"conflict_{conflict_index}"
+                    )
+                else:
+                    weight = max(1, round(conflict.weight / max_concurrency_weight * CONFLICT_WEIGHT_CAP))
+                    discourage_concurrency(group, weight, f"conflict_{conflict_index}")
 
         # Tags
         #
@@ -355,8 +395,9 @@ class SlotMachine:
         self.log.info("Generating schedule problem...")
 
         talks = [SlottedTalk(talk, self.problem) for talk in sorted(self.problem.talks, key=lambda t: t.id)]
+        conflicts = [SlottedConflict(conflict, self.problem) for conflict in self.problem.conflicts]
 
-        self.generate_problem(talks)
+        self.generate_problem(talks, conflicts)
 
         self.log.info(
             "Problem generated (%s variables) in %.3f seconds, attempting to solve...",

@@ -6,7 +6,7 @@ from datetime import datetime
 
 from dateutil import relativedelta
 
-from .data import SchedulingProblem, SpeakerID, Talk, TalkID, VenueID
+from .data import Conflict, SchedulingProblem, SpeakerID, Talk, TalkID, VenueID
 
 type Slot = int
 type SlotInterval = tuple[Slot, Slot]
@@ -144,3 +144,26 @@ class SlottedTalk:
 
     def __repr__(self) -> str:
         return f"<SlottedTalk {self.id}, duration: {self.duration}, speakers: {self.speakers}, venue_intervals: {self.venue_intervals}>"
+
+
+class SlottedConflict:
+    """A mirror of the Conflict class with time measured in slots."""
+
+    talks: set[TalkID]
+    weight: int
+    #: If set, the [start, end) slot intervals to spread the talks across.
+    spread_across: list[SlotInterval] | None
+
+    def __init__(self, conflict: Conflict, problem: SchedulingProblem) -> None:
+        self.talks = conflict.talks
+        self.weight = conflict.weight
+        if conflict.spread_across is None:
+            self.spread_across = None
+        else:
+            self.spread_across = sorted(
+                (
+                    calc_slot(problem.start_time, range_start, problem.slot_duration),
+                    calc_slot(problem.start_time, range_end, problem.slot_duration),
+                )
+                for range_start, range_end in conflict.spread_across
+            )
