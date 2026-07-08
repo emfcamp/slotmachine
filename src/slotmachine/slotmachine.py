@@ -32,6 +32,7 @@ class SlotMachine:
         talk_slot_max: dict[TalkID, Slot] = {}
         venue_windows: dict[VenueID, list[SlotInterval]] = {}
         venue_load: dict[VenueID, list[tuple[cp_model.IntVar, int]]] = {}
+        static_talks: set[TalkID] = set()
 
         ## Main constraint problem generation
         #
@@ -72,11 +73,15 @@ class SlotMachine:
 
             # Int var representing the possible talk slots inside the set of
             # permitted intervals for this talk
-            start_var = self.model.new_int_var_from_domain(
-                cp_model.Domain.from_intervals(allowed_intervals),
-                f"talk_slot_{talk.id}",
-            )
+            slot_domain = cp_model.Domain.from_intervals(allowed_intervals)
+            start_var = self.model.new_int_var_from_domain(slot_domain, f"talk_slot_{talk.id}")
             self.talk_slot_vars[talk.id] = start_var
+
+            # If a talk can only be in exactly one slot, add it to the set of
+            # talks which cannot be moved. This commonly happens for manually
+            # scheduled talks which are confined to a single time.
+            if slot_domain.min() == slot_domain.max():
+                static_talks.add(talk.id)
 
             # Interval var representing the talk period without venue, used to
             # prevent speakers being in multiple places at the same time
@@ -269,6 +274,11 @@ class SlotMachine:
         content_duration = {talk.id: talk.content_duration for talk in talks}
 
         def discourage_concurrency(talk_ids: list[TalkID], weight: int, name: str) -> None:
+            # If all of the talks in this group are static, skip the group
+            # because we can't move any of them
+            if all(talk_id in static_talks for talk_id in talk_ids):
+                return
+
             intervals: list[cp_model.IntervalVar] = []
             for talk_id in talk_ids:
                 start = self.talk_slot_vars[talk_id]
