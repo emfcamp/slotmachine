@@ -24,11 +24,16 @@ talks = [
         duration=30,
         # Optional: The system will attempt to avoid running talks with the same tags at the same time.
         tags={"security", "hardware"},
-        # The venues the talk may be scheduled in, each with its own allowed time
-        # ranges. An optional venue_weight expresses a preference for scheduling
-        # the talk in that venue (0 = no preference); weights are rescaled
-        # internally, higher means more preferred - e.g. for putting bigger talks
-        # on bigger stages.
+        # The venues the talk may be scheduled in, each with its own allowed
+        # time ranges. An optional venue_weight expresses how much the talk
+        # benefits from being scheduled in that venue (0 = no preference).
+        # For sorting popular talks onto bigger stages, supply weights in a range
+        # from 0-100.
+        # It is suggested that you calculate it as popularity_rank * capacity_rank
+        # popularity_rank is the talk's popularity bucketed into 1 (least popular)
+        # to 10 (most popular)
+        # capacity_rank is venue's capacity bucketed into 1 (smallest venue) to
+        # 10 (largest venue)
         venue_times=[
             VenueTimes(
                 venue=1,

@@ -175,10 +175,12 @@ class SlotMachine:
         obj_vars: list[cp_model.LinearExprT] = []
         obj_scores: list[int] = []
 
-        # Maximise the number of things in their preferred venues (for putting
-        # big talks on big stages)
-        VENUE_WEIGHT_CAP = 10
-        max_venue_weight = max((vt.venue_weight for talk in talks for vt in talk.venue_intervals), default=1)
+        # Maximise the number of things in their preferred venues, for putting
+        # big talks on big stages.
+        # Weights should be supplied as talk popularity rank * venue capacity rank
+        VENUE_WEIGHT_CAP = 100
+        max_venue_weight = max((vt.venue_weight for talk in talks for vt in talk.venue_intervals), default=0)
+        scale = min(1.0, VENUE_WEIGHT_CAP / max_venue_weight) if max_venue_weight > 0 else 1.0
         for talk in talks:
             for vt in talk.venue_intervals:
                 venue_var = self.talk_venue_active_vars.get((talk.id, vt.venue))
@@ -186,7 +188,7 @@ class SlotMachine:
                     continue
                 # max() ensures a small weight never rounds to zero and gets
                 # silently dropped when large weights are present
-                weight = max(1, round(vt.venue_weight / max_venue_weight * VENUE_WEIGHT_CAP))
+                weight = max(1, round(vt.venue_weight * scale))
                 obj_vars.append(venue_var)
                 obj_scores.append(weight * talk.duration)
 
