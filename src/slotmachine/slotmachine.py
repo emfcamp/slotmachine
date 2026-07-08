@@ -329,7 +329,7 @@ class SlotMachine:
         if obj_vars:
             self.model.maximize(cp_model.LinearExpr.weighted_sum(obj_vars, obj_scores))
 
-    def solve(self, debug: bool = False) -> SchedulingSolution:
+    def solve(self, debug: bool = False, max_time_in_seconds: float = 30.0) -> SchedulingSolution:
         t0 = time.monotonic()
 
         self.log.info("Generating schedule problem...")
@@ -347,7 +347,7 @@ class SlotMachine:
         solve_start = time.monotonic()
         self._solver = cp_model.CpSolver()
         self._solver.parameters.num_search_workers = 8
-        self._solver.parameters.max_time_in_seconds = 30.0
+        self._solver.parameters.max_time_in_seconds = max_time_in_seconds
         self._solver.parameters.log_search_progress = debug
         self._solver.parameters.log_to_stdout = debug
 
