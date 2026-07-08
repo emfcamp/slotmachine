@@ -9,9 +9,8 @@ from .slots import Slot, SlotInterval, SlottedTalk
 
 
 class Unsatisfiable(Exception):
-    def __init__(self, status: str, explanations: list[str]) -> None:
+    def __init__(self, status: str) -> None:
         self.status = status
-        self.explanations = explanations
 
 
 class SlotMachine:
@@ -22,23 +21,6 @@ class SlotMachine:
         # Vars representing the selected talk slot and venue
         self.talk_slot_vars: dict[TalkID, cp_model.IntVar] = {}
         self.talk_venue_active_vars: dict[tuple[TalkID, VenueID], cp_model.IntVar] = {}
-
-        self.infeasibility_vars: dict[str, str] = {}
-
-    def infeasibility_var(self, description: str) -> cp_model.IntVar:
-        """An assumed-true boolean variable to help identify which constraint is causing the model to be unsatisfiable.
-
-        This variable is bound to a constraint using `only_enforce_if`, and is linked to a human-readable
-        string. If the model is infeasible, OR-Tools can tell us the minimal set of these boolean variables
-        it needs to switch off in order to make the model solveable.
-
-        The human-readable strings are returned in the `explanations` field of the `Unsatisfiable` exception.
-        """
-        var_name = f"_infeasibility_{id(description)}"
-        self.infeasibility_vars[var_name] = description
-        var = self.model.new_bool_var(var_name)
-        self.model.add_assumption(var)
-        return var
 
     def generate_problem(self, talks: list[SlottedTalk]) -> None:
         self.model = cp_model.CpModel()
@@ -142,15 +124,11 @@ class SlotMachine:
                 self.model.add_bool_or([active.Not(), *in_interval_vars])
 
             # Exactly one venue must be chosen for a talk
-            self.model.add(cp_model.LinearExpr.sum(venue_active_vars) == 1).only_enforce_if(
-                self.infeasibility_var(f"Unable to assign venue for talk {talk.id}")
-            )
+            self.model.add(cp_model.LinearExpr.sum(venue_active_vars) == 1)
 
         # No two talks may overlap in the same venue
-        for venue, intervals in sorted(venue_intervals.items()):
-            self.model.add_no_overlap(intervals).only_enforce_if(
-                self.infeasibility_var(f"Talks overlap in venue {venue}")
-            )
+        for _venue, intervals in sorted(venue_intervals.items()):
+            self.model.add_no_overlap(intervals)
 
         # And a speaker cannot give multiple talks simultaneously
         talks_by_speaker: dict[SpeakerID, list[TalkID]] = {}
@@ -160,11 +138,9 @@ class SlotMachine:
                 for speaker in sorted(talk.speakers):
                     talks_by_speaker.setdefault(speaker, []).append(talk.id)
 
-        for speaker, conflicts in sorted(talks_by_speaker.items()):
+        for _speaker, conflicts in sorted(talks_by_speaker.items()):
             if len(conflicts) > 1:
-                self.model.add_no_overlap([talk_intervals[talk_id] for talk_id in conflicts]).only_enforce_if(
-                    self.infeasibility_var(f"Conflict for speaker {speaker}")
-                )
+                self.model.add_no_overlap([talk_intervals[talk_id] for talk_id in conflicts])
 
         ## Optimisation objective generation
         #
@@ -372,11 +348,7 @@ class SlotMachine:
         time_complete = time.monotonic()
 
         if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            explanations = [
-                self.infeasibility_vars[self.model.get_bool_var_from_proto_index(i).name]
-                for i in self._solver.sufficient_assumptions_for_infeasibility()
-            ]
-            raise Unsatisfiable(self._solver.status_name(status), explanations)
+            raise Unsatisfiable(self._solver.status_name(status))
 
         self.log.info(
             "Problem solved (%s, %d solutions) in %.2f seconds. Total runtime %.2f seconds.",
